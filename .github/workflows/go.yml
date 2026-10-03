@@ -36,6 +36,19 @@ jobs:
         with:
           node-version: 22
 
+      # go.sum is generated here from the real module proxy and committed
+      # back once; afterwards this step is a no-op.
+      - name: Sync go.sum
+        run: |
+          go mod tidy
+          if ! git diff --quiet -- go.mod go.sum; then
+            git config user.name "Gabe Azar"
+            git config user.email "gabeazar94@gmail.com"
+            git add go.mod go.sum
+            git commit -m "go: sync go.sum"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
       - name: Build
         run: go build ./... 2>&1 | tee build.log
 
