@@ -1,0 +1,26 @@
+# Node / Cloudflare
+node_modules/
+.wrangler/
+.dev.vars
+*.log
+
+# Go
+/bin/
+/dist/
+
+# Android
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.kotlin/
+*.keystore
+*.jks
+!android/debug.keystore.placeholder
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp

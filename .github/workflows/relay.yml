@@ -1,0 +1,54 @@
+name: relay
+
+on:
+  push:
+    paths:
+      - "relay/**"
+      - "web/**"
+      - ".github/workflows/relay.yml"
+  pull_request:
+    paths:
+      - "relay/**"
+      - "web/**"
+      - ".github/workflows/relay.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Worker behaviour tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: relay
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Start the Worker locally
+        run: |
+          npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
+          echo $! > wrangler.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8787/healthz >/dev/null 2>&1; then
+              echo "worker is up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "worker did not start"; cat wrangler.log; exit 1
+
+      - name: Run tests
+        run: npm test
+
+      - name: Worker log
+        if: always()
+        run: cat wrangler.log || true

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>A file is waiting for you · Latchway</title>
+  <meta name="description" content="Someone is sending you a file with Latchway. It moves straight from their phone to yours, encrypted end to end.">
+  <link rel="icon" href="/latch.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <rect class="post" x="7" y="10" width="7" height="44" rx="3.5"/>
+        <rect class="post" x="50" y="10" width="7" height="44" rx="3.5"/>
+        <path class="keeper" d="M44 24h8a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-8" fill="none" stroke-width="4" stroke-linecap="round"/>
+        <rect class="bar" x="13" y="28" width="36" height="8" rx="4"/>
+        <circle class="pivot" cx="19" cy="32" r="2.6"/>
+      </svg>
+    </div>
+
+    <h1>Someone sent you a file.</h1>
+    <p class="lede">It's still on their phone. Latchway moves it straight to yours, encrypted the whole way, with no cloud copy in between.</p>
+
+    <p id="status" class="status" aria-live="polite">
+      <span class="dot"></span>
+      <span id="status-text">Checking whether the sender is online…</span>
+    </p>
+
+    <div id="actions" class="actions">
+      <a id="open" class="button primary" href="#">Open in Latchway</a>
+      <a id="get" class="button secondary" href="https://github.com/gabeazar/latchway/releases/latest" rel="noopener">Get Latchway for Android</a>
+    </div>
+
+    <div id="install-hint" class="note hidden">
+      <p>Nothing opened? You need the Latchway app on this phone. Install it, come back to this page and tap <b>Open in Latchway</b> again. The file stays available as long as the sender keeps sharing it.</p>
+    </div>
+
+    <div id="not-android" class="note hidden">
+      <p>Latchway is an Android app for now. Downloading straight from this page in a browser is on the way, which will cover iPhones and computers too.</p>
+    </div>
+
+    <div id="bad-link" class="note hidden">
+      <p>This link is incomplete. The part after the <b>#</b> is the key that unlocks the file, and it's missing. Ask the sender to share the link again, ideally by pasting it rather than retyping it.</p>
+    </div>
+
+    <h2>What happens when you open it</h2>
+    <p>Latchway on your phone connects to the sender's phone directly and asks for the file. Only someone holding this exact link can decrypt it; the server that showed you this page can't, and never sees the file at all.</p>
+  </main>
+
+  <footer>
+    <p>Latchway is <a href="https://github.com/gabeazar/latchway" rel="noopener">open source</a>. This page stores nothing about you.</p>
+    <p><a href="/">How Latchway works</a></p>
+  </footer>
+
+  <script src="/share.js"></script>
+</body>
+</html>

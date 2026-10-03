@@ -1,0 +1,17 @@
+{
+  "name": "latchway-rendezvous",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rendezvous server for Latchway: relays the encrypted WebRTC handshake between two phones. Runs on the Cloudflare Workers free plan.",
+  "license": "GPL-3.0-only",
+  "author": "Gabe Azar",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

@@ -1,0 +1,58 @@
+# Cloudflare Worker: the rendezvous server.
+#
+# It relays the *encrypted* WebRTC handshake between a sender and a receiver
+# and hands out short-lived TURN credentials. File bytes never pass through
+# it. Everything here runs on the Workers Free plan.
+#
+# Deploy from the Cloudflare dashboard (Workers & Pages → Create → Import a
+# repository) with:
+#   Root directory:   relay
+#   Build command:    (leave empty)
+#   Deploy command:   npx wrangler deploy
+# Then add the secrets listed under [vars] in Settings → Variables and
+# Secrets. See docs/HOSTING.md for the click-by-click version.
+
+name = "latchway"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# latchway.app is registered on Cloudflare Registrar, so the Worker can own
+# the apex directly. Cloudflare creates the DNS record and certificate.
+routes = [
+  { pattern = "latchway.app", custom_domain = true },
+  { pattern = "www.latchway.app", custom_domain = true },
+]
+
+# Static landing / "open in app" pages live in ../web. The Worker runs first
+# for every request so it can add security headers and route /s/<id>.
+[assets]
+directory = "../web"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "none"
+
+# One Durable Object instance per shareId. SQLite-backed is the only kind
+# available on the free plan (and the recommended kind everywhere).
+[[durable_objects.bindings]]
+name = "SHARES"
+class_name = "ShareObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ShareObject"]
+
+[observability]
+enabled = true
+
+[vars]
+# Public, non-secret configuration. Secrets (TURN_KEY_ID, TURN_KEY_API_TOKEN,
+# HOST_TOKEN) are set in the dashboard, never here.
+#
+# SHA-256 fingerprints of the Android signing certificates, comma-separated,
+# in the colon-separated upper-case form Android uses. Served at
+# /.well-known/assetlinks.json so https links open straight in the app.
+ASSETLINKS_FINGERPRINTS = ""
+# Android application id, must match android/app/build.gradle.kts.
+ANDROID_PACKAGE = "app.latchway"
+# Optional JSON array of extra RTCIceServer objects (e.g. your own coturn).
+EXTRA_ICE_SERVERS = ""
