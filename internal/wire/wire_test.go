@@ -53,7 +53,7 @@ func TestLinkRoundTrip(t *testing.T) {
 		t.Fatalf("deep link round trip failed: %v", err)
 	}
 	for _, bad := range []string{
-		"https://latchway.app/s/" + s.IDString(),            // no secret
+		"https://latchway.app/s/" + s.IDString(), // no secret
 		"https://latchway.app/x/" + s.IDString() + "#" + s.SecretString(),
 		"http://latchway.app/s/" + s.IDString() + "#" + s.SecretString(), // plain http
 		"https://latchway.app/s/short#" + s.SecretString(),
@@ -246,12 +246,12 @@ type Vectors struct {
 	} `json:"envelope"`
 
 	Chunks struct {
-		Key      string `json:"key_hex"`
-		Plain0   string `json:"plain0_hex"`
-		Frame0   string `json:"frame0_hex"`
-		Plain1   string `json:"plain1_hex"`
-		Frame1   string `json:"frame1_hex"`
-		Empty    string `json:"empty_final_frame_hex"`
+		Key    string `json:"key_hex"`
+		Plain0 string `json:"plain0_hex"`
+		Frame0 string `json:"frame0_hex"`
+		Plain1 string `json:"plain1_hex"`
+		Frame1 string `json:"frame1_hex"`
+		Empty  string `json:"empty_final_frame_hex"`
 	} `json:"chunks"`
 }
 

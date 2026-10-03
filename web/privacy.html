@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Privacy · Latchway</title>
+  <meta name="description" content="What Latchway collects (nothing), what its servers can see, and what the other person can see.">
+  <link rel="icon" href="/latch.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <h1>Privacy</h1>
+    <p class="lede">Latchway has no accounts, no analytics and no storage. This page explains what the pieces involved can and cannot see, so you can decide for yourself.</p>
+
+    <h2>The app</h2>
+    <p>Latchway on your phone reads only the file you choose to send and writes only the file you choose to receive. It asks for no storage permission; files come in through Android's picker and share sheet. The only permissions it uses are internet access, the foreground-service notification that keeps a transfer alive, and notifications for "someone wants to download".</p>
+    <p>Nothing you do in the app is reported anywhere. There are no crash reporters, advertising identifiers or usage statistics.</p>
+
+    <h2>The rendezvous server</h2>
+    <p>When you share a file, your phone keeps a connection open to a small server (<code>latchway.app</code> by default, or one you choose). When your friend opens the link, the server introduces the two phones to each other and relays their connection handshake. That handshake is encrypted with a key that exists only in the link, so the server relays bytes it cannot read.</p>
+    <ul class="facts">
+      <li><span>It sees</span><span>the share identifier from the link, the IP addresses of both phones while they connect, and when that happened.</span></li>
+      <li><span>It never sees</span><span>the file, its name, its size, the key, or any password.</span></li>
+      <li><span>It keeps</span><span>nothing. There is no database and no log of transfers. Cloudflare, which hosts the default server, keeps its standard short-lived request logs for operating the service.</span></li>
+    </ul>
+
+    <h2>The connection between phones</h2>
+    <p>The file travels directly from one phone to the other over an encrypted channel (WebRTC, the technology behind video calls, with Latchway's own encryption on top). On a direct connection, each phone learns the other's IP address; that is how direct connections work.</p>
+    <p>When a direct path isn't possible, the encrypted stream passes through a relay (Cloudflare's TURN service for the default server). The relay sees traffic volume and the phones' addresses, not the contents. If you prefer to never reveal your address to the other person, turn on <b>relay only</b> in the app's settings; transfers are then always relayed.</p>
+
+    <h2>The link</h2>
+    <p>The link carries the key after the <code>#</code>. Anyone who has the complete link can download the file while you are sharing it. Treat it like the file itself: send it over a channel you trust, add a password for anything sensitive, and stop sharing when you're done. Stopping the share makes the link useless immediately.</p>
+
+    <h2>This website</h2>
+    <p>These pages set no cookies, load nothing from third parties and run no analytics. The page a link opens checks once whether the sender is online; that request contains the share identifier and nothing else.</p>
+
+    <h2>Children</h2>
+    <p>Latchway is a general-purpose tool and does not knowingly collect any information from anyone, including children, because it collects no information.</p>
+
+    <h2>Changes and contact</h2>
+    <p>This policy is versioned with the source code at <a href="https://github.com/gabeazar/latchway" rel="noopener">github.com/gabeazar/latchway</a>; the history there is the change log. Questions go to the issue tracker or the contact in <a href="https://github.com/gabeazar/latchway/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</p>
+  </main>
+
+  <footer>
+    <p>Made by Gabe Azar. <a href="/">Back to the start</a>.</p>
+  </footer>
+</body>
+</html>

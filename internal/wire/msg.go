@@ -12,10 +12,10 @@ type Msg struct {
 	T string `json:"t"`
 
 	// Rendezvous layer.
-	SID  string            `json:"sid,omitempty"`
-	D    string            `json:"d,omitempty"`
-	ICE  []ICEServer       `json:"ice,omitempty"`
-	Code string            `json:"code,omitempty"`
+	SID  string      `json:"sid,omitempty"`
+	D    string      `json:"d,omitempty"`
+	ICE  []ICEServer `json:"ice,omitempty"`
+	Code string      `json:"code,omitempty"`
 
 	// Session layer (plaintext hello/auth).
 	V  int    `json:"v,omitempty"`
@@ -27,16 +27,16 @@ type Msg struct {
 	C string `json:"c,omitempty"`
 
 	// Encrypted session messages.
-	Name     string `json:"name,omitempty"`
-	Size     *int64 `json:"size,omitempty"`
-	Mime     string `json:"mime,omitempty"`
-	Chunk    int    `json:"chunk,omitempty"`
-	From     string `json:"from,omitempty"`
-	Approval *bool  `json:"approval,omitempty"`
-	SDP      string `json:"sdp,omitempty"`
+	Name     string  `json:"name,omitempty"`
+	Size     *int64  `json:"size,omitempty"`
+	Mime     string  `json:"mime,omitempty"`
+	Chunk    int     `json:"chunk,omitempty"`
+	From     string  `json:"from,omitempty"`
+	Approval *bool   `json:"approval,omitempty"`
+	SDP      string  `json:"sdp,omitempty"`
 	Start    *uint32 `json:"start,omitempty"`
-	Cand     string `json:"cand,omitempty"`
-	Mid      string `json:"mid,omitempty"`
+	Cand     string  `json:"cand,omitempty"`
+	Mid      string  `json:"mid,omitempty"`
 	MLine    *uint16 `json:"mline,omitempty"`
 
 	// Data-channel control.

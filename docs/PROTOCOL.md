@@ -109,7 +109,9 @@ same link. (It is safe: anyone who registers without the secret cannot
 produce valid encrypted messages, so joiners detect the impostor in §4.)
 
 The host keeps this connection open for the lifetime of the share and
-sends WebSocket pings at least every 30 s.
+sends the keepalive `{"t":"ping"}` at least every 30 s; the server answers
+`{"t":"pong"}` (without waking a hibernated Durable Object). Joiners may
+use the same keepalive.
 
 ### 3.2 Joiner connection
 
@@ -228,9 +230,11 @@ substitute its own fingerprint and man-in-the-middle the data channel.
 ### 4.4 Data channel
 
 Both sides create the channel with `negotiated: true, id: 0, ordered: true,
-reliable` and label `"latchway"`. Frames larger than 65 KiB MUST NOT be sent
-(libwebrtc and browsers cap SCTP messages at 256 KiB by default; 64 KiB
-chunks are safe everywhere).
+reliable` and label `"latchway"`. A frame is at most 65 557 bytes (header +
+64 KiB + tag). Every implementation MUST advertise and accept SCTP messages
+of at least 262 144 bytes (`a=max-message-size`), which is libwebrtc's and
+the browsers' default; pion-based implementations must raise their default
+of 65 536.
 
 **Binary frames** (host → joiner) carry one encrypted chunk each:
 
