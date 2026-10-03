@@ -1,6 +1,6 @@
-// Behavioural tests for the rendezvous Worker, run against `wrangler dev`.
+// Behavioural tests for the rendezvous, run against either implementation:
 //
-//   RELAY_URL=http://127.0.0.1:8787 node --test test/
+//   RELAY_URL=http://127.0.0.1:8787 node --test test/*.test.mjs
 //
 // They exercise PROTOCOL.md §3 end to end over real WebSockets using Node's
 // built-in client (Node 22+), with no WebRTC involved.
@@ -17,22 +17,24 @@ function randomId() {
   return Buffer.from(bytes).toString("base64url");
 }
 
+function randomReg() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Buffer.from(bytes).toString("base64url");
+}
+
 // Small helper wrapping a WebSocket in an async message queue.
-function connect(path) {
-  const ws = new WebSocket(WS_BASE + path);
+function connect(path, headers) {
+  const ws = new WebSocket(WS_BASE + path, headers ? { headers } : undefined);
   const queue = [];
   const waiters = [];
-  let closed = null;
   const push = (item) => {
     const w = waiters.shift();
     if (w) w.resolve(item);
     else queue.push(item);
   };
   ws.addEventListener("message", (ev) => push({ msg: JSON.parse(ev.data) }));
-  ws.addEventListener("close", (ev) => {
-    closed = { code: ev.code, reason: ev.reason };
-    push({ close: closed });
-  });
+  ws.addEventListener("close", (ev) => push({ close: { code: ev.code, reason: ev.reason } }));
   ws.addEventListener("error", () => {});
   const opened = new Promise((resolve, reject) => {
     ws.addEventListener("open", () => resolve(), { once: true });
@@ -64,6 +66,16 @@ function connect(path) {
   };
 }
 
+// Registers a host for `id` with registration key `reg` and waits for ready.
+async function host(id, reg) {
+  const h = connect("/v1/host?share=" + id);
+  await h.opened;
+  h.send({ t: "register", reg });
+  const first = await h.nextMsg();
+  assert.deepEqual(first, { t: "ready" });
+  return h;
+}
+
 test("healthz and security headers", async () => {
   const res = await fetch(BASE + "/healthz");
   assert.equal(res.status, 200);
@@ -83,6 +95,18 @@ test("share page is served for any well-formed id and never for malformed ones",
 
   const bad = await fetch(BASE + "/s/not-a-real-id");
   assert.equal(bad.status, 404);
+});
+
+test("non-canonical share ids are rejected everywhere", async () => {
+  // 0xFF×16 is "__________________ _w"; flipping the last char to "x" keeps
+  // the same bytes with a stray padding bit.
+  const canon = Buffer.alloc(16, 0xff).toString("base64url");
+  const alt = canon.slice(0, 21) + "x";
+  assert.notEqual(alt, canon);
+  assert.equal(Buffer.from(alt, "base64url").toString("hex"), "ff".repeat(16));
+  assert.equal((await fetch(BASE + "/s/" + alt)).status, 404);
+  assert.equal((await fetch(BASE + "/v1/status/" + alt)).status, 404);
+  assert.equal((await fetch(BASE + "/v1/host?share=" + alt)).status, 400);
 });
 
 test("assetlinks is an empty list until fingerprints are configured", async () => {
@@ -110,11 +134,31 @@ test("join without a host gets not_found and is closed", async () => {
   assert.equal(close.code, 1008);
 });
 
+test("a host must register first; a bad registration is a protocol error", async () => {
+  const id = randomId();
+  const h = connect("/v1/host?share=" + id);
+  await h.opened;
+  h.send({ t: "sig", sid: "x", d: "y" });
+  assert.deepEqual(await h.nextMsg(), { t: "error", code: "protocol" });
+  await h.nextClose();
+
+  const h2 = connect("/v1/host?share=" + id);
+  await h2.opened;
+  h2.send({ t: "register", reg: "tooshort" });
+  assert.deepEqual(await h2.nextMsg(), { t: "error", code: "protocol" });
+  await h2.nextClose();
+
+  // An unregistered host does not make the share active.
+  const h3 = connect("/v1/host?share=" + id);
+  await h3.opened;
+  assert.deepEqual(await (await fetch(BASE + "/v1/status/" + id)).json(), { active: false });
+  h3.close();
+});
+
 test("host registration, join, bidirectional sig relay, leave", async () => {
   const id = randomId();
-  const host = connect("/v1/host?share=" + id);
-  await host.opened;
-  assert.deepEqual(await host.nextMsg(), { t: "ready" });
+  const reg = randomReg();
+  const h = await host(id, reg);
 
   const st = await (await fetch(BASE + "/v1/status/" + id)).json();
   assert.deepEqual(st, { active: true });
@@ -124,115 +168,174 @@ test("host registration, join, bidirectional sig relay, leave", async () => {
   const joined = await joiner.nextMsg();
   assert.equal(joined.t, "joined");
   assert.match(joined.sid, /^[A-Za-z0-9_-]{16}$/);
+  // Joiners receive STUN only, never credentials.
   assert.ok(Array.isArray(joined.ice) && joined.ice.length >= 1);
-  assert.ok(joined.ice[0].urls.some((u) => u.startsWith("stun:")));
+  for (const s of joined.ice) {
+    assert.ok(s.urls.every((u) => u.startsWith("stun:")), "joiner ice must be stun only");
+    assert.equal(s.username, undefined);
+    assert.equal(s.credential, undefined);
+  }
 
-  const join = await host.nextMsg();
+  const join = await h.nextMsg();
   assert.equal(join.t, "join");
   assert.equal(join.sid, joined.sid);
-  assert.ok(Array.isArray(join.ice));
+  assert.ok(Array.isArray(join.ice) && join.ice.length >= 1);
 
   // joiner -> host (joiner needn't include sid; server adds it)
   joiner.send({ t: "sig", d: "hello-from-joiner" });
-  const toHost = await host.nextMsg();
-  assert.deepEqual(toHost, { t: "sig", sid: joined.sid, d: "hello-from-joiner" });
+  assert.deepEqual(await h.nextMsg(), { t: "sig", sid: joined.sid, d: "hello-from-joiner" });
 
   // host -> joiner
-  host.send({ t: "sig", sid: joined.sid, d: "hello-from-host" });
-  const toJoiner = await joiner.nextMsg();
-  assert.deepEqual(toJoiner, { t: "sig", sid: joined.sid, d: "hello-from-host" });
+  h.send({ t: "sig", sid: joined.sid, d: "hello-from-host" });
+  assert.deepEqual(await joiner.nextMsg(), { t: "sig", sid: joined.sid, d: "hello-from-host" });
 
-  // keepalive auto-response
-  host.send({ t: "ping" });
-  assert.deepEqual(await host.nextMsg(), { t: "pong" });
+  // keepalive
+  h.send({ t: "ping" });
+  assert.deepEqual(await h.nextMsg(), { t: "pong" });
 
   // host sends sig to unknown sid: told to leave
-  host.send({ t: "sig", sid: "nope", d: "x" });
-  assert.deepEqual(await host.nextMsg(), { t: "leave", sid: "nope" });
+  h.send({ t: "sig", sid: "nope", d: "x" });
+  assert.deepEqual(await h.nextMsg(), { t: "leave", sid: "nope" });
 
   // host drops the joiner
-  host.send({ t: "leave", sid: joined.sid });
+  h.send({ t: "leave", sid: joined.sid });
   assert.deepEqual(await joiner.nextMsg(), { t: "error", code: "closed" });
   const close = await joiner.nextClose();
   assert.equal(close.code, 1008);
 
   // the host is told once the joiner socket is gone
-  const leave = await host.nextMsg();
-  assert.deepEqual(leave, { t: "leave", sid: joined.sid });
+  assert.deepEqual(await h.nextMsg(), { t: "leave", sid: joined.sid });
 
-  host.close();
+  h.close();
 });
 
 test("joiner disconnect notifies host; host disconnect closes joiners with host_gone", async () => {
   const id = randomId();
-  const host = connect("/v1/host?share=" + id);
-  await host.opened;
-  await host.nextMsg();
+  const h = await host(id, randomReg());
 
   const j1 = connect("/v1/join/" + id);
   await j1.opened;
   const joined1 = await j1.nextMsg();
-  await host.nextMsg(); // join
+  await h.nextMsg(); // join
 
   j1.close();
-  assert.deepEqual(await host.nextMsg(), { t: "leave", sid: joined1.sid });
+  assert.deepEqual(await h.nextMsg(), { t: "leave", sid: joined1.sid });
 
   const j2 = connect("/v1/join/" + id);
   await j2.opened;
   await j2.nextMsg();
-  await host.nextMsg();
+  await h.nextMsg();
 
-  host.close();
+  h.close();
   assert.deepEqual(await j2.nextMsg(), { t: "error", code: "host_gone" });
   await j2.nextClose();
 });
 
-test("a second host replaces the first", async () => {
+test("the same registration key replaces the host; a different one is forbidden", async () => {
   const id = randomId();
-  const h1 = connect("/v1/host?share=" + id);
-  await h1.opened;
-  await h1.nextMsg();
-  const h2 = connect("/v1/host?share=" + id);
-  await h2.opened;
-  assert.deepEqual(await h2.nextMsg(), { t: "ready" });
+  const reg = randomReg();
+  const h1 = await host(id, reg);
+
+  // Someone who merely knows the share id cannot take it over...
+  const imp = connect("/v1/host?share=" + id);
+  await imp.opened;
+  imp.send({ t: "register", reg: randomReg() });
+  assert.deepEqual(await imp.nextMsg(), { t: "error", code: "forbidden" });
+  await imp.nextClose();
+  // ...and the real host is unaffected.
+  h1.send({ t: "ping" });
+  assert.deepEqual(await h1.nextMsg(), { t: "pong" });
+
+  // The originating device can re-register (changed network, say).
+  const h2 = await host(id, reg);
   assert.deepEqual(await h1.nextMsg(), { t: "error", code: "replaced" });
   await h1.nextClose();
 
-  // the share is still active through h2
+  // The share is still active through h2.
   const j = connect("/v1/join/" + id);
   await j.opened;
   assert.equal((await j.nextMsg()).t, "joined");
   assert.equal((await h2.nextMsg()).t, "join");
   j.close();
+  await h2.nextMsg(); // leave
+
+  // The binding outlives the host: with nobody live, a stranger still
+  // cannot claim the id.
   h2.close();
+  await new Promise((r) => setTimeout(r, 200));
+  const imp2 = connect("/v1/host?share=" + id);
+  await imp2.opened;
+  imp2.send({ t: "register", reg: randomReg() });
+  assert.deepEqual(await imp2.nextMsg(), { t: "error", code: "forbidden" });
+  await imp2.nextClose();
+
+  // But the owner can come back.
+  const h3 = await host(id, reg);
+  h3.close();
 });
 
 test("oversized payloads and malformed frames are rejected", async () => {
   const id = randomId();
-  const host = connect("/v1/host?share=" + id);
-  await host.opened;
-  await host.nextMsg();
+  const h = await host(id, randomReg());
 
   const j = connect("/v1/join/" + id);
   await j.opened;
   await j.nextMsg();
-  await host.nextMsg();
+  await h.nextMsg();
 
   j.send({ t: "sig", d: "x".repeat(16 * 1024 + 1) });
   assert.deepEqual(await j.nextMsg(), { t: "error", code: "rate_limited" });
   await j.nextClose();
-  assert.equal((await host.nextMsg()).t, "leave");
+  assert.equal((await h.nextMsg()).t, "leave");
 
   const j2 = connect("/v1/join/" + id);
   await j2.opened;
   await j2.nextMsg();
-  await host.nextMsg();
+  await h.nextMsg();
   j2.ws.send("this is not json");
   assert.deepEqual(await j2.nextMsg(), { t: "error", code: "protocol" });
   const close = await j2.nextClose();
   assert.equal(close.code, 1002);
+  await h.nextMsg(); // leave
 
-  host.close();
+  h.close();
+});
+
+test("per-IP joiner cap yields busy", async () => {
+  const id = randomId();
+  const h = await host(id, randomReg());
+  const joiners = [];
+  for (let i = 0; i < 4; i++) {
+    const j = connect("/v1/join/" + id);
+    await j.opened;
+    assert.equal((await j.nextMsg()).t, "joined");
+    await h.nextMsg();
+    joiners.push(j);
+  }
+  const extra = connect("/v1/join/" + id);
+  await extra.opened;
+  assert.deepEqual(await extra.nextMsg(), { t: "error", code: "busy" });
+  await extra.nextClose();
+  for (const j of joiners) j.close();
+  h.close();
+});
+
+test("a foreign Origin header is refused", async () => {
+  const id = randomId();
+  const h = await host(id, randomReg());
+  const j = connect("/v1/join/" + id, { Origin: "https://evil.example" });
+  let failed = false;
+  try {
+    await j.opened;
+  } catch {
+    failed = true;
+  }
+  if (!failed) {
+    // Some runtimes surface the refused upgrade as an immediate close.
+    const item = await j.next();
+    assert.ok(item.close, "expected the connection to be refused");
+  }
+  h.close();
 });
 
 test("bad share ids and non-websocket requests are refused at the edge", async () => {

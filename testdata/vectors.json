@@ -9,14 +9,14 @@
   "no_password": {
     "k_auth_hex": "8a0be8233867efcfc43140118cd9af741bcccb2609875b05db5bb011fcc4df84",
     "k_root_hex": "b7c549ebeeed47320c56cbe6aa53d5e3fde08250cf12b9868c2fc124b24f8e85",
-    "proof_b64": "-lkZN_W5e5MMonNkGoCeHHxlZKQqoVZV9Wk7GfP0HlA",
+    "proof_b64": "KSEjxmJSiYsh27u7S9RPGEnRLne6OflJuUayXTleihQ",
     "s_sig_hex": "663f9b8f3a44b1c238272a92b708528e9ac7c2ea3672eb50c356e5efeec0e03b",
     "s_file_hex": "78d838c02ca58adb6ec0cac49a6de78909600cd7da7801e534e418a54fd57b4c"
   },
   "with_password": {
     "k_auth_hex": "e1676ddf53268409f14541815995adc0c009bc3b9471a90bf4f19f40068a125a",
     "k_root_hex": "f0c1d7d78f2ea5a4cb0f02f9444a5880802a67c2d90a8655d3324a7fbe1bacaf",
-    "proof_b64": "ZYCAATF-Cr9xMTrkzIOZtdSfXY8z0iB2FiNDLtmaWr0",
+    "proof_b64": "axAfqweKta3M8ud-zojWrU2SjlHSRLQ-i7Gp2k6zmn4",
     "s_sig_hex": "bcc4b68062c23cdd7f3667abada976ffa35141e11200a8c12e458b30955f728d",
     "s_file_hex": "dc5e44b0c122d77e2277d143a9d6c9a95683ef9eb79c365904121d20b58b68b8"
   },
@@ -33,6 +33,13 @@
       "Jwq8YBpxiD-HNetjIOhGtWM6Q-pt5-MC2bVRpnmyc0I",
       "yp3Rnn8JEmPY6jJ2QypQNvK5Fbj_3ePpf7TFzHWutuUMSVkl8t6qjYmKICePPgjFCvLd2Lw37A"
     ]
+  },
+  "meta": {
+    "name": "vacation.mp4",
+    "size": 2400000000,
+    "mime": "video/mp4",
+    "from": "Gabe",
+    "padded_json": "{\"t\":\"meta\",\"name\":\"vacation.mp4\",\"size\":2400000000,\"mime\":\"video/mp4\",\"chunk\":65536,\"from\":\"Gabe\",\"approval\":false,\"pad\":\"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   \"}"
   },
   "chunks": {
     "key_hex": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",

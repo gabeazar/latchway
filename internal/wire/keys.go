@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/pbkdf2"
@@ -100,18 +101,38 @@ func (s Share) DeepLink(host string) string {
 var shareIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 var secretRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
-// ParseShareID decodes a 22-character share id.
+// ParseShareID decodes a 22-character share id. Non-canonical spellings
+// (trailing padding bits set) are rejected so that an id has exactly one
+// string form.
 func ParseShareID(s string) ([ShareIDLen]byte, error) {
 	var id [ShareIDLen]byte
 	if !shareIDRe.MatchString(s) {
 		return id, errors.New("malformed share id")
 	}
 	b, err := B64.DecodeString(s)
-	if err != nil || len(b) != ShareIDLen {
+	if err != nil || len(b) != ShareIDLen || B64.EncodeToString(b) != s {
 		return id, errors.New("malformed share id")
 	}
 	copy(id[:], b)
 	return id, nil
+}
+
+// CanonicalShareID reports whether s is a well-formed, canonical share id.
+func CanonicalShareID(s string) bool {
+	_, err := ParseShareID(s)
+	return err == nil
+}
+
+// RegKeyLen is the size of a share's registration key (PROTOCOL.md §3.1).
+const RegKeyLen = 32
+
+// NewRegKey draws a registration key. It lives only on the sender's device.
+func NewRegKey() ([]byte, error) {
+	k := make([]byte, RegKeyLen)
+	if _, err := io.ReadFull(rand.Reader, k); err != nil {
+		return nil, err
+	}
+	return k, nil
 }
 
 // ParseLink accepts both link forms and returns the rendezvous host and the
@@ -194,19 +215,67 @@ func expand(prk, info, out []byte) {
 	}
 }
 
-// Proof computes HMAC-SHA256(K_auth, "latchway/v1/proof" || hostNonce || joinerNonce).
-func Proof(auth []byte, hostNonce, joinerNonce []byte) []byte {
+// Proof computes the joiner's proof of link (and password) possession:
+// HMAC-SHA256(K_auth, "latchway/v1/proof" || v || pw || hostNonce || joinerNonce).
+// Binding the hello parameters stops a relay from flipping them unnoticed.
+func Proof(auth []byte, version int, password bool, hostNonce, joinerNonce []byte) []byte {
 	m := hmac.New(sha256.New, auth)
 	m.Write(labelProof)
+	pw := byte(0)
+	if password {
+		pw = 1
+	}
+	m.Write([]byte{byte(version), pw})
 	m.Write(hostNonce)
 	m.Write(joinerNonce)
 	return m.Sum(nil)
 }
 
 // VerifyProof compares in constant time.
-func VerifyProof(auth []byte, hostNonce, joinerNonce, proof []byte) bool {
-	want := Proof(auth, hostNonce, joinerNonce)
+func VerifyProof(auth []byte, version int, password bool, hostNonce, joinerNonce, proof []byte) bool {
+	want := Proof(auth, version, password, hostNonce, joinerNonce)
 	return subtle.ConstantTimeCompare(want, proof) == 1
+}
+
+// MetaSize is the exact serialised size of every meta message, so that the
+// ciphertext length reveals nothing about the file (PROTOCOL.md §4.3).
+const MetaSize = 1024
+
+// MaxNameBytes bounds the file name carried in meta.
+const MaxNameBytes = 255
+
+// PadMeta serialises a meta message to exactly MetaSize bytes by filling
+// Pad with spaces. Name is truncated to MaxNameBytes (on a rune boundary)
+// first; From is truncated harder if needed.
+func PadMeta(m Msg) ([]byte, error) {
+	m.Name = truncateUTF8(m.Name, MaxNameBytes)
+	m.From = truncateUTF8(m.From, 64)
+	m.Mime = truncateUTF8(m.Mime, 128)
+	m.Pad = ""
+	base := len(m.Encode())
+	// Encoding with an empty Pad omits the field; account for `,"pad":""`.
+	overhead := len(`,"pad":""`)
+	need := MetaSize - base - overhead
+	if need < 0 {
+		return nil, errors.New("meta does not fit in the fixed size")
+	}
+	m.Pad = strings.Repeat(" ", need)
+	out := m.Encode()
+	if len(out) != MetaSize {
+		return nil, fmt.Errorf("meta padding produced %d bytes", len(out))
+	}
+	return out, nil
+}
+
+func truncateUTF8(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // NewNonce draws a 16-byte nonce.

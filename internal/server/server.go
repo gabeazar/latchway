@@ -1,20 +1,22 @@
 // Package server is the self-hostable rendezvous: the same protocol as the
 // Cloudflare Worker in relay/, as a single Go binary. It relays encrypted
 // handshakes, hands out ICE servers and serves the static pages. It stores
-// nothing and logs no identifiers.
+// nothing but registration-key hashes (in memory) and logs no identifiers.
 package server
 
 import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -24,31 +26,42 @@ import (
 	"github.com/gabeazar/latchway/internal/wire"
 )
 
-// Limits from PROTOCOL.md §3.4.
+// Limits from PROTOCOL.md §3.4, plus local abuse controls.
 const (
-	maxPayloadChars = 16 * 1024
-	maxFrameBytes   = 20 * 1024
-	maxSigsPerDir   = 256
-	maxJoiners      = 16
-	joinerIdle      = 120 * time.Second
-	joinerMax       = 30 * time.Minute
-	sweepEvery      = 30 * time.Second
+	maxPayloadChars  = 16 * 1024
+	maxFrameBytes    = 20 * 1024
+	maxSigsPerDir    = 256
+	maxJoiners       = 16
+	maxJoinersPerIP  = 4
+	joinerIdle       = 120 * time.Second
+	joinerMax        = 30 * time.Minute
+	hostIdle         = 90 * time.Second
+	registerTimeout  = 10 * time.Second
+	sweepEvery       = 30 * time.Second
+	regBindingTTL    = 30 * 24 * time.Hour
+	defaultMaxShares = 10000
 )
 
-var shareIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
+// STUNOnly is what unauthenticated joiners receive.
+var STUNOnly = []wire.ICEServer{{URLs: []string{"stun:stun.cloudflare.com:3478"}}}
 
 // Options configure a Server.
 type Options struct {
-	// HostToken, when set, must be presented by hosts (Authorization: Bearer
-	// or ?token=). Joiners never need it.
+	// HostToken, when set, must be presented by hosts as a Bearer token.
+	// Joiners never need it.
 	HostToken string
-	// ICE returns the ICE servers handed to both sides of a new session.
+	// ICE returns the ICE servers handed to hosts (TURN included).
 	ICE func(ctx context.Context) []wire.ICEServer
 	// Assets holds the static site (web/). May be nil.
 	Assets fs.FS
 	// AndroidPackage and Fingerprints feed /.well-known/assetlinks.json.
 	AndroidPackage string
 	Fingerprints   []string
+	// TrustProxy makes the server take client addresses from
+	// X-Forwarded-For (first hop) instead of the TCP peer.
+	TrustProxy bool
+	// MaxShares caps simultaneously registered shares (default 10000).
+	MaxShares int
 	// Logf receives operational log lines (counts, never identifiers).
 	Logf func(format string, args ...any)
 }
@@ -61,20 +74,24 @@ const (
 )
 
 type conn struct {
-	ws      *websocket.Conn
-	role    role
-	sid     string
-	at      time.Time
-	last    time.Time
-	nh, nj  int
-	writeMu sync.Mutex
-	closed  chan struct{}
-	once    sync.Once
+	ws         *websocket.Conn
+	role       role
+	sid        string
+	ip         string
+	registered bool
+	at         time.Time
+	last       time.Time
+	nh, nj     int
+	writeMu    sync.Mutex
+	closed     chan struct{}
+	once       sync.Once
 }
 
 type share struct {
 	host    *conn
 	joiners map[string]*conn
+	regHash string
+	regAt   time.Time
 }
 
 // Server implements http.Handler.
@@ -83,7 +100,6 @@ type Server struct {
 	mu     sync.Mutex
 	shares map[string]*share
 	mux    *http.ServeMux
-	static http.Handler
 }
 
 // New creates a server and starts its sweeper.
@@ -92,14 +108,12 @@ func New(opts Options) *Server {
 		opts.Logf = log.Printf
 	}
 	if opts.ICE == nil {
-		opts.ICE = func(context.Context) []wire.ICEServer {
-			return []wire.ICEServer{{URLs: []string{"stun:stun.cloudflare.com:3478"}}}
-		}
+		opts.ICE = func(context.Context) []wire.ICEServer { return STUNOnly }
+	}
+	if opts.MaxShares <= 0 {
+		opts.MaxShares = defaultMaxShares
 	}
 	s := &Server{opts: opts, shares: map[string]*share{}, mux: http.NewServeMux()}
-	if opts.Assets != nil {
-		s.static = http.FileServer(http.FS(opts.Assets))
-	}
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/.well-known/assetlinks.json", s.handleAssetLinks)
 	s.mux.HandleFunc("/v1/host", s.handleHost)
@@ -134,7 +148,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for k, v := range securityHeaders {
 		h.Set(k, v)
 	}
-	if r.TLS != nil {
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	}
 	s.mux.ServeHTTP(w, r)
@@ -169,7 +183,7 @@ func (s *Server) handleAssetLinks(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/v1/status/")
-	if !shareIDRe.MatchString(id) {
+	if !wire.CanonicalShareID(id) {
 		http.Error(w, "not found", 404)
 		return
 	}
@@ -184,7 +198,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSharePage(w http.ResponseWriter, r *http.Request) {
 	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/")
-	if !shareIDRe.MatchString(rest) || s.opts.Assets == nil {
+	if !wire.CanonicalShareID(rest) || s.opts.Assets == nil {
 		s.notFound(w, r)
 		return
 	}
@@ -192,7 +206,7 @@ func (s *Server) handleSharePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
-	if s.static == nil {
+	if s.opts.Assets == nil {
 		s.notFound(w, r)
 		return
 	}
@@ -200,16 +214,16 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	if p == "" {
 		p = "index.html"
 	}
-	if f, err := s.opts.Assets.Open(p); err == nil {
-		f.Close()
-		s.serveFile(w, r, p, "public, max-age=3600")
+	if !fs.ValidPath(p) {
+		s.notFound(w, r)
 		return
 	}
-	// "auto trailing slash" style: /privacy → privacy.html
-	if f, err := s.opts.Assets.Open(p + ".html"); err == nil {
-		f.Close()
-		s.serveFile(w, r, p+".html", "public, max-age=3600")
-		return
+	for _, candidate := range []string{p, p + ".html"} {
+		if f, err := s.opts.Assets.Open(candidate); err == nil {
+			f.Close()
+			s.serveFile(w, r, candidate, "public, max-age=3600")
+			return
+		}
 	}
 	s.notFound(w, r)
 }
@@ -238,14 +252,44 @@ func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
 
 // --- WebSocket endpoints ---------------------------------------------------
 
+func (s *Server) clientIP(r *http.Request) string {
+	if s.opts.TrustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			return strings.TrimSpace(strings.Split(xff, ",")[0])
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// originOK admits native clients (no Origin) and same-origin pages.
+func originOK(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	return strings.EqualFold(origin, scheme+"://"+r.Host)
+}
+
 func (s *Server) accept(w http.ResponseWriter, r *http.Request) (*websocket.Conn, bool) {
 	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 		http.Error(w, "expected websocket", http.StatusUpgradeRequired)
 		return nil, false
 	}
+	if !originOK(r) {
+		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return nil, false
+	}
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// No cookies or ambient credentials are involved, and native apps
-		// send no Origin header; the protocol authenticates itself.
+		// Origin is checked above with rules that admit header-less native
+		// clients, which the library's own check would reject.
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
@@ -257,7 +301,7 @@ func (s *Server) accept(w http.ResponseWriter, r *http.Request) (*websocket.Conn
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("share")
-	if !shareIDRe.MatchString(id) {
+	if !wire.CanonicalShareID(id) {
 		http.Error(w, "bad share id", 400)
 		return
 	}
@@ -266,11 +310,12 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.opts.HostToken != "" {
-		tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if tok == "" || tok == r.Header.Get("Authorization") {
-			tok = r.URL.Query().Get("token")
+		auth := r.Header.Get("Authorization")
+		tok := ""
+		if strings.HasPrefix(auth, "Bearer ") {
+			tok = strings.TrimPrefix(auth, "Bearer ")
 		}
-		if subtle.ConstantTimeCompare([]byte(tok), []byte(s.opts.HostToken)) != 1 {
+		if tok == "" || subtle.ConstantTimeCompare([]byte(tok), []byte(s.opts.HostToken)) != 1 {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
@@ -279,18 +324,50 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c := &conn{ws: ws, role: roleHost, at: time.Now(), last: time.Now(), closed: make(chan struct{})}
+	now := time.Now()
+	c := &conn{ws: ws, role: roleHost, ip: s.clientIP(r), at: now, last: now, closed: make(chan struct{})}
+	ctx := r.Context()
+
+	// Registration must be the first message (PROTOCOL.md §3.1).
+	rctx, cancel := context.WithTimeout(ctx, registerTimeout)
+	first, err := c.read(rctx)
+	cancel()
+	if err != nil || first.T != wire.TRegister {
+		c.fail(wire.ErrProtocol)
+		return
+	}
+	regBytes, err := wire.B64.DecodeString(first.Reg)
+	if err != nil || len(regBytes) != wire.RegKeyLen {
+		c.fail(wire.ErrProtocol)
+		return
+	}
+	sum := sha256.Sum256(regBytes)
+	hash := hex.EncodeToString(sum[:])
 
 	s.mu.Lock()
 	sh := s.shares[id]
 	if sh == nil {
+		if len(s.shares) >= s.opts.MaxShares {
+			s.mu.Unlock()
+			c.fail(wire.ErrBusy)
+			return
+		}
 		sh = &share{joiners: map[string]*conn{}}
 		s.shares[id] = sh
 	}
+	if sh.regHash != "" && now.Sub(sh.regAt) < regBindingTTL &&
+		subtle.ConstantTimeCompare([]byte(sh.regHash), []byte(hash)) != 1 {
+		s.mu.Unlock()
+		c.fail(wire.ErrForbidden)
+		return
+	}
+	sh.regHash = hash
+	sh.regAt = now
 	old := sh.host
 	oldJoiners := sh.joiners
 	sh.host = c
 	sh.joiners = map[string]*conn{}
+	c.registered = true
 	s.mu.Unlock()
 
 	if old != nil {
@@ -301,18 +378,28 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 	c.send(wire.Msg{T: wire.TReady})
 
-	ctx := r.Context()
 	for {
 		m, err := c.read(ctx)
 		if err != nil {
+			break
+		}
+		s.mu.Lock()
+		c.last = time.Now()
+		current := sh.host == c
+		s.mu.Unlock()
+		if !current {
 			break
 		}
 		switch m.T {
 		case wire.TPing:
 			c.send(wire.Msg{T: wire.TPong})
 		case wire.TSig:
-			if m.SID == "" || len(m.D) > maxPayloadChars {
+			if m.SID == "" {
 				c.fail(wire.ErrProtocol)
+				continue
+			}
+			if len(m.D) > maxPayloadChars {
+				c.fail(wire.ErrRateLimited)
 				continue
 			}
 			s.mu.Lock()
@@ -321,11 +408,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 				j.nh++
 				j.last = time.Now()
 			}
-			current := sh.host == c
 			s.mu.Unlock()
-			if !current {
-				continue
-			}
 			if j == nil {
 				c.send(wire.Msg{T: wire.TLeave, SID: m.SID})
 				continue
@@ -345,16 +428,16 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Host gone.
+	// Host gone: release the share's live state but keep the registration
+	// binding so nobody else can claim the id while it is remembered.
 	s.mu.Lock()
 	var joiners []*conn
-	if sh.host == c {
+	if s.shares[id] == sh && sh.host == c {
 		sh.host = nil
 		for _, j := range sh.joiners {
 			joiners = append(joiners, j)
 		}
 		sh.joiners = map[string]*conn{}
-		delete(s.shares, id)
 	}
 	s.mu.Unlock()
 	for _, j := range joiners {
@@ -365,7 +448,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/v1/join/")
-	if !shareIDRe.MatchString(id) {
+	if !wire.CanonicalShareID(id) {
 		http.Error(w, "not found", 404)
 		return
 	}
@@ -373,7 +456,8 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c := &conn{ws: ws, role: roleJoiner, at: time.Now(), last: time.Now(), closed: make(chan struct{})}
+	now := time.Now()
+	c := &conn{ws: ws, role: roleJoiner, ip: s.clientIP(r), at: now, last: now, closed: make(chan struct{})}
 
 	s.mu.Lock()
 	sh := s.shares[id]
@@ -387,15 +471,27 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		c.fail(wire.ErrBusy)
 		return
 	}
+	sameIP := 0
+	for _, j := range sh.joiners {
+		if j.ip == c.ip {
+			sameIP++
+		}
+	}
+	if sameIP >= maxJoinersPerIP {
+		s.mu.Unlock()
+		c.fail(wire.ErrBusy)
+		return
+	}
 	sid := newSID()
 	c.sid = sid
 	sh.joiners[sid] = c
 	host := sh.host
 	s.mu.Unlock()
 
-	ice := s.opts.ICE(r.Context())
-	c.send(wire.Msg{T: wire.TJoined, SID: sid, ICE: ice})
-	host.send(wire.Msg{T: wire.TJoin, SID: sid, ICE: ice})
+	// Joiners get STUN only; the host forwards TURN inside the encrypted
+	// `go` message after the proof (PROTOCOL.md §3.2, §4.3).
+	c.send(wire.Msg{T: wire.TJoined, SID: sid, ICE: STUNOnly})
+	host.send(wire.Msg{T: wire.TJoin, SID: sid, ICE: s.opts.ICE(r.Context())})
 
 	ctx := r.Context()
 	for {
@@ -430,12 +526,9 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	var h *conn
-	if sh.joiners[sid] == c {
+	if s.shares[id] == sh && sh.joiners[sid] == c {
 		delete(sh.joiners, sid)
 		h = sh.host
-	}
-	if sh.host == nil && len(sh.joiners) == 0 {
-		delete(s.shares, id)
 	}
 	s.mu.Unlock()
 	if h != nil {
@@ -444,23 +537,33 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	c.close()
 }
 
+// sweeper enforces the lifetime limits and forgets expired bindings.
 func (s *Server) sweeper() {
 	t := time.NewTicker(sweepEvery)
 	defer t.Stop()
 	for range t.C {
 		now := time.Now()
 		var stale []*conn
+		var staleCode []string
 		s.mu.Lock()
-		for _, sh := range s.shares {
+		for id, sh := range s.shares {
+			if sh.host != nil && now.Sub(sh.host.last) > hostIdle {
+				stale = append(stale, sh.host)
+				staleCode = append(staleCode, wire.ErrTimeout)
+			}
 			for _, j := range sh.joiners {
 				if now.Sub(j.last) > joinerIdle || now.Sub(j.at) > joinerMax {
 					stale = append(stale, j)
+					staleCode = append(staleCode, wire.ErrTimeout)
 				}
+			}
+			if sh.host == nil && len(sh.joiners) == 0 && now.Sub(sh.regAt) > regBindingTTL {
+				delete(s.shares, id)
 			}
 		}
 		s.mu.Unlock()
-		for _, j := range stale {
-			j.fail(wire.ErrTimeout)
+		for i, c := range stale {
+			c.fail(staleCode[i])
 		}
 	}
 }
@@ -468,22 +571,20 @@ func (s *Server) sweeper() {
 // --- conn helpers -----------------------------------------------------------
 
 func (c *conn) read(ctx context.Context) (wire.Msg, error) {
-	for {
-		typ, data, err := c.ws.Read(ctx)
-		if err != nil {
-			return wire.Msg{}, err
-		}
-		if typ != websocket.MessageText {
-			c.fail(wire.ErrProtocol)
-			return wire.Msg{}, io.EOF
-		}
-		m, err := wire.Decode(data)
-		if err != nil {
-			c.fail(wire.ErrProtocol)
-			return wire.Msg{}, io.EOF
-		}
-		return m, nil
+	typ, data, err := c.ws.Read(ctx)
+	if err != nil {
+		return wire.Msg{}, err
 	}
+	if typ != websocket.MessageText {
+		c.fail(wire.ErrProtocol)
+		return wire.Msg{}, io.EOF
+	}
+	m, err := wire.Decode(data)
+	if err != nil {
+		c.fail(wire.ErrProtocol)
+		return wire.Msg{}, io.EOF
+	}
+	return m, nil
 }
 
 func (c *conn) send(m wire.Msg) {
@@ -497,15 +598,17 @@ func (c *conn) send(m wire.Msg) {
 func (c *conn) fail(code string) {
 	c.send(wire.Msg{T: wire.TError, Code: code})
 	status := websocket.StatusPolicyViolation
-	if code == wire.ErrProtocol {
+	switch code {
+	case wire.ErrProtocol:
 		status = websocket.StatusProtocolError
-	}
-	if code == wire.ErrReplaced || code == wire.ErrHostGone {
+	case wire.ErrReplaced, wire.ErrHostGone:
 		status = websocket.StatusNormalClosure
 	}
 	c.once.Do(func() {
 		close(c.closed)
-		_ = c.ws.Close(status, code)
+		// The close handshake can wait up to 5 s for an unresponsive peer;
+		// never make another connection's handler pay for that.
+		go func() { _ = c.ws.Close(status, code) }()
 	})
 }
 

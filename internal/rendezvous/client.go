@@ -72,8 +72,13 @@ func wsURL(base *url.URL, path string, query url.Values) string {
 	return u.String()
 }
 
-// DialHost registers a share and returns once the server acknowledged it.
-func DialHost(ctx context.Context, base *url.URL, shareID string, token string) (*Conn, error) {
+// DialHost registers a share with its registration key (PROTOCOL.md §3.1)
+// and returns once the server acknowledged it. A *ServerError with code
+// "forbidden" means another device holds this share id.
+func DialHost(ctx context.Context, base *url.URL, shareID string, regKey []byte, token string) (*Conn, error) {
+	if len(regKey) != wire.RegKeyLen {
+		return nil, errors.New("registration key must be 32 bytes")
+	}
 	q := url.Values{"share": {shareID}}
 	h := http.Header{}
 	if token != "" {
@@ -81,6 +86,10 @@ func DialHost(ctx context.Context, base *url.URL, shareID string, token string) 
 	}
 	c, err := dial(ctx, wsURL(base, "/v1/host", q), h)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.Send(ctx, wire.Msg{T: wire.TRegister, Reg: wire.B64.EncodeToString(regKey)}); err != nil {
+		c.Close()
 		return nil, err
 	}
 	first, err := c.Recv(ctx)

@@ -55,7 +55,19 @@ reaches the rendezvous or any web server. Implementations MUST NOT place
 the secret anywhere other than the fragment, MUST NOT log it, and MUST set
 `Referrer-Policy: no-referrer` on any page that serves a link.
 
-The link does not reveal whether a password is set.
+The `https` form is the primary one: with Android App Links verified
+against `/.well-known/assetlinks.json`, only the genuine app receives it.
+The `latchway://` form is a fallback for devices where verification has
+not happened; custom schemes are not verified by the OS, so a malicious app
+claiming the scheme could intercept such a link. Pages offering the
+fallback should say so.
+
+`shareId` strings are compared byte for byte. Servers MUST reject an id that
+does not re-encode to the same 22 characters after decoding (non-canonical
+padding bits), so that one share cannot be addressed under two spellings.
+
+The link does not reveal whether a password is set, although the sender's
+`hello` message (§4.1) does, to anyone who connects.
 
 ## 2. Key derivation
 
@@ -73,6 +85,12 @@ K_root = HKDF-Expand(prk, info = "latchway/v1/root", 32)
 normalised to Unicode NFC before UTF-8 encoding; implementations MUST
 normalise so that the same password typed on different keyboards derives
 the same key.
+
+PBKDF2 rather than a memory-hard KDF is a deliberate trade-off: it is
+available natively on every target (javax.crypto, WebCrypto, Go) with no
+extra dependency to audit. The password's protection against offline
+guessing rests primarily on §3.1, which ensures a receiver's proof can only
+ever reach the genuine sender, and on the online throttle in §4.1.
 
 Per session (see §4), with `hostNonce` and `joinerNonce` of 16 bytes each:
 
@@ -97,16 +115,38 @@ router. It parses only `t` and `sid`; everything in `d` is opaque to it.
 
 ```
 GET wss://<host>/v1/host?share=<shareId>
-Authorization: Bearer <token>        (only if the server requires one)
+Authorization: Bearer <token>        (only if the server requires one; header only, never a query parameter)
 ```
 
-Server → host on success: `{"t":"ready"}`.
+The host's first message is its registration:
 
-A new registration for a `shareId` that already has a live host **replaces**
-it; the old connection receives `{"t":"error","code":"replaced"}` and is
-closed. This lets a phone that changed networks resume its share with the
-same link. (It is safe: anyone who registers without the secret cannot
-produce valid encrypted messages, so joiners detect the impostor in §4.)
+```json
+{"t":"register","reg":"<b64url 32 bytes>"}
+```
+
+`reg` is a **registration key**: 32 random bytes drawn by the sender's
+device when the share is created and kept only on that device for the
+share's lifetime. It is not derived from the link, so holding the link
+gives nobody the ability to pose as the sender. The server stores
+`SHA-256(reg)` against the `shareId` (never `reg` itself) and replies
+`{"t":"ready"}`.
+
+- A registration for a `shareId` whose stored hash matches **replaces** the
+  live host, if any: the old connection receives
+  `{"t":"error","code":"replaced"}` and is closed, and its joiners receive
+  `host_gone`. This is how a phone that changed networks resumes its share.
+- A registration whose hash does not match the stored one is refused with
+  `{"t":"error","code":"forbidden"}`, whether or not a host is live.
+- The binding expires 30 days after the most recent registration. A server
+  that loses its bindings (the Go binary keeps them in memory) reopens
+  those ids to whoever registers first; operators who care should keep the
+  binary running or front it with the Worker.
+
+Without this, anyone who learned a `shareId` (link-preview bots, browser
+history, server logs) could register as the host and collect a receiver's
+password proof for offline guessing, or simply knock the real host off.
+
+Servers SHOULD rate-limit registrations per IP address.
 
 The host keeps this connection open for the lifetime of the share and
 sends the keepalive `{"t":"ping"}` at least every 30 s; the server answers
@@ -126,8 +166,16 @@ is closed. Otherwise:
 - server → host:   `{"t":"join","sid":"<same sid>","ice":[…]}`
 
 `ice` is an array of RTCIceServer objects (`{"urls":[…],"username":…,
-"credential":…}`). When the server has TURN credentials configured it
-includes short-lived TURN entries; otherwise STUN only.
+"credential":…}`). The joiner's list contains **STUN servers only**: a
+joiner has proven nothing yet, and TURN credentials cost money. The host's
+list additionally contains short-lived TURN credentials when the server has
+them configured; the host passes them to the joiner inside the encrypted
+`go` message (§4.3), after the proof.
+
+Servers SHOULD require the WebSocket `Origin` header, when present, to match
+their own origin, so that web pages cannot make visitors' browsers join
+shares. Native clients send no `Origin`. Servers SHOULD also cap concurrent
+joiners per IP address.
 
 ### 3.3 Relaying
 
@@ -150,8 +198,10 @@ overwrite `sid` on messages from a joiner, who has only one session).
 | joiner lifetime without a `sig`         | ≤ 120 s        |
 | joiner lifetime total                   | ≤ 30 min       |
 
-Exceeding a limit yields `{"t":"error","code":"rate_limited"}` (or
-`"busy"` for the joiner cap) and a close. The server MUST NOT persist any
+Exceeding a size or count limit yields `{"t":"error","code":"rate_limited"}`,
+the joiner cap yields `"busy"`, and the lifetime limits yield `"timeout"`;
+each is followed by a close. Hosts that send nothing (not even the
+keepalive) for 90 s MAY be disconnected. The server MUST NOT persist any
 message, MUST NOT log `d`, and SHOULD NOT log `shareId`.
 
 ### 3.5 Other HTTP endpoints
@@ -177,24 +227,34 @@ Host → joiner, immediately after `join`:
 ```
 
 `pw` tells the joiner whether to prompt for a password before deriving
-keys.
+keys. `hostNonce` MUST be freshly drawn for every session; the replay and
+nonce-uniqueness arguments below depend on it.
 
 Joiner → host:
 
 ```json
 {"t":"auth","n":"<b64url joinerNonce 16 bytes>","p":"<b64url proof>"}
-proof = HMAC-SHA256(K_auth, "latchway/v1/proof" || hostNonce || joinerNonce)
+proof = HMAC-SHA256(K_auth, "latchway/v1/proof" || v(1 byte) || pw(1 byte: 0x00/0x01) || hostNonce || joinerNonce)
 ```
+
+Binding `v` and `pw` into the proof means a relay that flips either field
+causes a clean `bad_auth` rather than a misdiagnosed failure, and rules
+out version downgrades once a v2 exists.
 
 The host compares in constant time. On failure it replies
 `{"t":"error","code":"bad_auth"}` (plaintext) and sends `leave` for the
-session. Hosts MUST throttle: after 10 failed proofs within a minute the
-share rejects all joiners for 60 s. Because the proof is bound to both
-nonces it cannot be replayed.
+session. Hosts MUST throttle online guessing without punishing other
+receivers: after 5 failed proofs within 10 minutes, the host answers
+further proofs for that share no sooner than 10 s after receiving them.
+Because the proof is bound to both nonces it cannot be replayed.
 
 The joiner authenticates the host implicitly: only a party knowing
-`K_root` can produce the encrypted messages that follow. A joiner that
+`K_root` can produce the encrypted messages that follow, and §3.1 ensures
+only the originating device can be registered as the host. A joiner that
 receives an undecryptable message MUST abort with "this link is not valid".
+After the joiner has received its first `enc` message, plaintext messages
+on the session carry no meaning and MUST be ignored; before that, the only
+meaningful plaintext message from the host is `error`.
 
 ### 4.2 Encrypted envelope
 
@@ -215,8 +275,8 @@ expected value.
 
 | Direction      | Message                                                                                                  |
 |----------------|----------------------------------------------------------------------------------------------------------|
-| host → joiner  | `{"t":"meta","name":"…","size":123,"mime":"…","chunk":65536,"from":"Gabe","approval":true}` `size` is -1 when unknown. `from` is optional. `approval` means the joiner should show "waiting for the sender to approve". |
-| host → joiner  | `{"t":"go"}` — the host is ready to answer an offer (sent immediately when no approval is required).     |
+| host → joiner  | `{"t":"meta","name":"…","size":123,"mime":"…","chunk":65536,"from":"Gabe","approval":true,"pad":"…"}` `size` is -1 when unknown. `from` is optional. `approval` means the joiner should show "waiting for the sender to approve". `chunk` MUST be 65536 in v1; receivers reject other values. `pad` is spaces, sized so the serialised JSON is exactly 1024 bytes (names longer than fit are truncated to 255 bytes first), so the ciphertext length reveals nothing about the file name or size. |
+| host → joiner  | `{"t":"go","ice":[…]}` — the host is ready to answer an offer (sent immediately when no approval is required). `ice` is the host's full ICE server list from `join`, TURN included; the joiner MUST use it in place of the STUN-only list from `joined`. |
 | host → joiner  | `{"t":"error","code":"denied"|"expired"|"busy"}`                                                         |
 | joiner → host  | `{"t":"offer","sdp":"…","start":0}` — `start` is the first chunk index wanted (0 in v1; reserved for resume). |
 | host → joiner  | `{"t":"answer","sdp":"…"}`                                                                                |
@@ -267,14 +327,15 @@ resumes below 256 KiB. The host counts a download as completed only on
 
 ## 5. Error codes
 
-`not_found`, `host_gone`, `replaced`, `closed`, `bad_auth`, `denied`,
-`expired`, `busy`, `rate_limited`, `protocol`, `internal`.
+`not_found`, `host_gone`, `replaced`, `forbidden`, `closed`, `bad_auth`,
+`denied`, `expired`, `busy`, `rate_limited`, `timeout`, `protocol`,
+`internal`.
 
 ## 6. What each party learns
 
 | Party       | Learns                                                        | Never learns                         |
 |-------------|---------------------------------------------------------------|--------------------------------------|
-| Rendezvous  | `shareId`, both IP addresses, timing, size of handshake blobs  | secret, keys, file name, size, bytes |
+| Rendezvous  | `shareId`, both IP addresses, timing, whether a password is set, `SHA-256(reg)` | secret, keys, file name, size, bytes |
 | TURN relay  | both IP addresses, traffic volume (fallback only)              | anything inside DTLS                 |
 | Receiver    | the file; the sender's IP on a direct connection (see below)   | the sender's IP when TURN was used   |
 | Sender      | the receiver's progress; the receiver's IP on a direct path    | —                                    |

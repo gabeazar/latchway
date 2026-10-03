@@ -39,6 +39,12 @@ type Msg struct {
 	Mid      string  `json:"mid,omitempty"`
 	MLine    *uint16 `json:"mline,omitempty"`
 
+	// Registration (PROTOCOL.md §3.1).
+	Reg string `json:"reg,omitempty"`
+
+	// Fixed-size padding for meta.
+	Pad string `json:"pad,omitempty"`
+
 	// Data-channel control.
 	Bytes  *int64 `json:"bytes,omitempty"`
 	Reason string `json:"reason,omitempty"`
@@ -54,14 +60,15 @@ type ICEServer struct {
 // Message type names.
 const (
 	// Rendezvous.
-	TReady  = "ready"
-	TJoined = "joined"
-	TJoin   = "join"
-	TSig    = "sig"
-	TLeave  = "leave"
-	TError  = "error"
-	TPing   = "ping"
-	TPong   = "pong"
+	TRegister = "register"
+	TReady    = "ready"
+	TJoined   = "joined"
+	TJoin     = "join"
+	TSig      = "sig"
+	TLeave    = "leave"
+	TError    = "error"
+	TPing     = "ping"
+	TPong     = "pong"
 
 	// Session, plaintext.
 	THello = "hello"
@@ -87,6 +94,7 @@ const (
 	ErrNotFound    = "not_found"
 	ErrHostGone    = "host_gone"
 	ErrReplaced    = "replaced"
+	ErrForbidden   = "forbidden"
 	ErrClosed      = "closed"
 	ErrBadAuth     = "bad_auth"
 	ErrDenied      = "denied"

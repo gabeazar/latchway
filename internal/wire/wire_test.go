@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/hkdf"
 )
@@ -81,15 +82,21 @@ func TestProofAndSessionKeys(t *testing.T) {
 
 	hn, _ := NewNonce()
 	jn, _ := NewNonce()
-	p := Proof(k.Auth[:], hn, jn)
-	if !VerifyProof(k.Auth[:], hn, jn, p) {
+	p := Proof(k.Auth[:], ProtocolVersion, false, hn, jn)
+	if !VerifyProof(k.Auth[:], ProtocolVersion, false, hn, jn, p) {
 		t.Fatal("proof should verify")
 	}
-	if VerifyProof(kp.Auth[:], hn, jn, p) {
+	if VerifyProof(kp.Auth[:], ProtocolVersion, false, hn, jn, p) {
 		t.Fatal("proof must fail under a different password")
 	}
-	if VerifyProof(k.Auth[:], jn, hn, p) {
+	if VerifyProof(k.Auth[:], ProtocolVersion, false, jn, hn, p) {
 		t.Fatal("proof must be bound to nonce order")
+	}
+	if VerifyProof(k.Auth[:], ProtocolVersion, true, hn, jn, p) {
+		t.Fatal("proof must be bound to the pw flag")
+	}
+	if VerifyProof(k.Auth[:], 2, false, hn, jn, p) {
+		t.Fatal("proof must be bound to the version")
 	}
 
 	s1 := DeriveSession(k.Root[:], hn, jn)
@@ -196,6 +203,41 @@ func TestChunkFraming(t *testing.T) {
 	}
 }
 
+func TestShareIDCanonical(t *testing.T) {
+	// 0xFF... decodes fine but its canonical spelling ends in "w"; the
+	// spelling ending in "x" has a stray padding bit set.
+	canon := B64.EncodeToString(bytes.Repeat([]byte{0xff}, ShareIDLen))
+	if !CanonicalShareID(canon) {
+		t.Fatalf("%q should be canonical", canon)
+	}
+	alt := canon[:21] + "x"
+	if b, err := B64.DecodeString(alt); err != nil || !bytes.Equal(b, bytes.Repeat([]byte{0xff}, ShareIDLen)) {
+		t.Fatalf("test setup: %q should decode to the same bytes (err=%v)", alt, err)
+	}
+	if CanonicalShareID(alt) {
+		t.Fatalf("non-canonical id %q accepted", alt)
+	}
+}
+
+func TestPadMeta(t *testing.T) {
+	for _, name := range []string{"a", strings.Repeat("é", 300), "vacation.mp4"} {
+		b, err := PadMeta(Msg{T: TMeta, Name: name, Size: Int64(1 << 40), Mime: "video/mp4", Chunk: ChunkSize, From: "Gabe", Approval: Bool(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b) != MetaSize {
+			t.Fatalf("len %d", len(b))
+		}
+		m, err := Decode(b)
+		if err != nil || m.T != TMeta || m.Chunk != ChunkSize {
+			t.Fatalf("decode: %v", err)
+		}
+		if !utf8.ValidString(m.Name) {
+			t.Fatal("truncated name must stay valid UTF-8")
+		}
+	}
+}
+
 func TestMsgEncoding(t *testing.T) {
 	m := Msg{T: TMeta, Name: "a.bin", Size: Int64(5), Chunk: ChunkSize, Approval: Bool(false)}
 	b := m.Encode()
@@ -245,6 +287,14 @@ type Vectors struct {
 		Sealed     []string `json:"sealed_b64"`
 	} `json:"envelope"`
 
+	Meta struct {
+		Name   string `json:"name"`
+		Size   int64  `json:"size"`
+		Mime   string `json:"mime"`
+		From   string `json:"from"`
+		Padded string `json:"padded_json"`
+	} `json:"meta"`
+
 	Chunks struct {
 		Key    string `json:"key_hex"`
 		Plain0 string `json:"plain0_hex"`
@@ -290,7 +340,7 @@ func buildVectors() Vectors {
 		k := DeriveKeys(shareID, secret, pw)
 		dst.KAuth = hex.EncodeToString(k.Auth[:])
 		dst.KRoot = hex.EncodeToString(k.Root[:])
-		dst.Proof = B64.EncodeToString(Proof(k.Auth[:], hn, jn))
+		dst.Proof = B64.EncodeToString(Proof(k.Auth[:], ProtocolVersion, pw != "", hn, jn))
 		sk := DeriveSession(k.Root[:], hn, jn)
 		dst.SSig = hex.EncodeToString(sk.Sig[:])
 		dst.SFile = hex.EncodeToString(sk.File[:])
@@ -306,6 +356,16 @@ func buildVectors() Vectors {
 	for _, p := range v.Envelope.Plaintexts {
 		v.Envelope.Sealed = append(v.Envelope.Sealed, sealer.Seal([]byte(p)))
 	}
+
+	v.Meta.Name = "vacation.mp4"
+	v.Meta.Size = 2_400_000_000
+	v.Meta.Mime = "video/mp4"
+	v.Meta.From = "Gabe"
+	padded, err := PadMeta(Msg{T: TMeta, Name: v.Meta.Name, Size: Int64(v.Meta.Size), Mime: v.Meta.Mime, Chunk: ChunkSize, From: v.Meta.From, Approval: Bool(false)})
+	if err != nil {
+		panic(err)
+	}
+	v.Meta.Padded = string(padded)
 
 	fileKey := fixedBytes(0x80, KeyLen)
 	v.Chunks.Key = hex.EncodeToString(fileKey)
