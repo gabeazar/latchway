@@ -24,3 +24,5 @@ android/.kotlin/
 .DS_Store
 Thumbs.db
 *.swp
+hack/go.local.mod
+hack/go.local.sum

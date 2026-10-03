@@ -1,11 +1,11 @@
-# Wicket Protocol v1
+# Latchway Protocol v1
 
-This document is the single source of truth for every Wicket implementation
+This document is the single source of truth for every Latchway implementation
 (Android app, Go CLI, Cloudflare Worker and Go rendezvous servers, and the
 future browser receiver). If code and this document disagree, the code is
 wrong.
 
-Wicket moves a file **directly between two devices** over a WebRTC data
+Latchway moves a file **directly between two devices** over a WebRTC data
 channel. A small **rendezvous** server only relays the encrypted connection
 handshake; it never carries file bytes. When a direct path cannot be
 punched through two NATs, the data channel falls back to a TURN relay, which
@@ -47,7 +47,7 @@ Link forms:
 
 ```
 https://<rendezvous-host>/s/<shareId>#<secret>
-wicket://<rendezvous-host>/s/<shareId>#<secret>
+latchway://<rendezvous-host>/s/<shareId>#<secret>
 ```
 
 Browsers never send the fragment (`#…`) to any server, so the secret never
@@ -60,13 +60,13 @@ The link does not reveal whether a password is set.
 ## 2. Key derivation
 
 ```
-pwk  = PBKDF2-HMAC-SHA256(NFC(password), salt = "wicket/v1/pw" || shareId, iter = 600000, len = 32)
+pwk  = PBKDF2-HMAC-SHA256(NFC(password), salt = "latchway/v1/pw" || shareId, iter = 600000, len = 32)
        or 32 zero bytes when no password is set
 ikm  = secret || pwk                                        (64 bytes)
-prk  = HKDF-Extract(SHA-256, salt = "wicket/v1" || shareId, ikm)
+prk  = HKDF-Extract(SHA-256, salt = "latchway/v1" || shareId, ikm)
 
-K_auth = HKDF-Expand(prk, info = "wicket/v1/auth", 32)
-K_root = HKDF-Expand(prk, info = "wicket/v1/root", 32)
+K_auth = HKDF-Expand(prk, info = "latchway/v1/auth", 32)
+K_root = HKDF-Expand(prk, info = "latchway/v1/root", 32)
 ```
 
 `shareId` here means the raw 16 bytes. `NFC(password)` is the password
@@ -77,9 +77,9 @@ the same key.
 Per session (see §4), with `hostNonce` and `joinerNonce` of 16 bytes each:
 
 ```
-sprk   = HKDF-Extract(SHA-256, salt = "wicket/v1/session" || hostNonce || joinerNonce, ikm = K_root)
-S_sig  = HKDF-Expand(sprk, info = "wicket/v1/s/sig",  32)
-S_file = HKDF-Expand(sprk, info = "wicket/v1/s/file", 32)
+sprk   = HKDF-Extract(SHA-256, salt = "latchway/v1/session" || hostNonce || joinerNonce, ikm = K_root)
+S_sig  = HKDF-Expand(sprk, info = "latchway/v1/s/sig",  32)
+S_file = HKDF-Expand(sprk, info = "latchway/v1/s/file", 32)
 ```
 
 Every session therefore has fresh encryption keys even though the link is
@@ -156,7 +156,7 @@ message, MUST NOT log `d`, and SHOULD NOT log `shareId`.
 
 | Path                               | Purpose                                      |
 |------------------------------------|----------------------------------------------|
-| `GET /s/<shareId>`                 | Landing page ("Open in Wicket" / get the app) |
+| `GET /s/<shareId>`                 | Landing page ("Open in Latchway" / get the app) |
 | `GET /v1/status/<shareId>`         | `{"active":true|false}`                       |
 | `GET /.well-known/assetlinks.json` | Android App Links verification                |
 | `GET /healthz`                     | `200 ok`                                      |
@@ -181,7 +181,7 @@ Joiner → host:
 
 ```json
 {"t":"auth","n":"<b64url joinerNonce 16 bytes>","p":"<b64url proof>"}
-proof = HMAC-SHA256(K_auth, "wicket/v1/proof" || hostNonce || joinerNonce)
+proof = HMAC-SHA256(K_auth, "latchway/v1/proof" || hostNonce || joinerNonce)
 ```
 
 The host compares in constant time. On failure it replies
@@ -201,7 +201,7 @@ Every further signaling message is:
 
 ```json
 {"t":"enc","c":"<b64url ciphertext>"}
-ciphertext = AES-256-GCM(key = S_sig, nonce = dir(1) || 0x00×3 || counter(8), aad = "wicket/v1/sig", plaintext = JSON)
+ciphertext = AES-256-GCM(key = S_sig, nonce = dir(1) || 0x00×3 || counter(8), aad = "latchway/v1/sig", plaintext = JSON)
 ```
 
 `dir` is `0x00` for host→joiner and `0x01` for joiner→host. Each direction
@@ -216,7 +216,7 @@ expected value.
 | host → joiner  | `{"t":"meta","name":"…","size":123,"mime":"…","chunk":65536,"from":"Gabe","approval":true}` `size` is -1 when unknown. `from` is optional. `approval` means the joiner should show "waiting for the sender to approve". |
 | host → joiner  | `{"t":"go"}` — the host is ready to answer an offer (sent immediately when no approval is required).     |
 | host → joiner  | `{"t":"error","code":"denied"|"expired"|"busy"}`                                                         |
-| joiner → host  | `{"t":"offer","sdp":"…","from":0}` — `from` is the first chunk index wanted (0 in v1; reserved for resume). |
+| joiner → host  | `{"t":"offer","sdp":"…","start":0}` — `start` is the first chunk index wanted (0 in v1; reserved for resume). |
 | host → joiner  | `{"t":"answer","sdp":"…"}`                                                                                |
 | both           | `{"t":"ice","cand":"…","mid":"…","mline":0}` and `{"t":"ice-done"}`                                       |
 | both           | `{"t":"error","code":"…"}`                                                                                |
@@ -228,7 +228,7 @@ substitute its own fingerprint and man-in-the-middle the data channel.
 ### 4.4 Data channel
 
 Both sides create the channel with `negotiated: true, id: 0, ordered: true,
-reliable` and label `"wicket"`. Frames larger than 65 KiB MUST NOT be sent
+reliable` and label `"latchway"`. Frames larger than 65 KiB MUST NOT be sent
 (libwebrtc and browsers cap SCTP messages at 256 KiB by default; 64 KiB
 chunks are safe everywhere).
 
@@ -239,7 +239,7 @@ index  u32   chunk index, starting at 0, strictly sequential
 flags  u8    bit0 = last chunk
 body   …     AES-256-GCM(key = S_file,
                           nonce = 0x00×8 || index(4),
-                          aad   = "wicket/v1/chunk" || index(4) || flags(1),
+                          aad   = "latchway/v1/chunk" || index(4) || flags(1),
                           plaintext = up to `chunk` bytes of the file)
 ```
 
@@ -282,7 +282,7 @@ VPN. The default favours speed.
 
 ## 7. Why encrypt twice
 
-DTLS already encrypts the data channel hop by hop. The Wicket layer on top
+DTLS already encrypts the data channel hop by hop. The Latchway layer on top
 exists because (a) it binds the content to the link secret, so a rendezvous
 that lies about SDP gains nothing, (b) it makes the password a real second
 factor rather than a server-side check, and (c) the same chunk format will
