@@ -39,5 +39,5 @@ runs:
         body="${body:0:60000}"
         printf '%s' "$body" > /tmp/ci-comment.md
         gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
-          -f body=@/tmp/ci-comment.md >/dev/null && echo "posted commit comment" \
+          -F body=@/tmp/ci-comment.md >/dev/null && echo "posted commit comment" \
           || echo "could not post commit comment"
