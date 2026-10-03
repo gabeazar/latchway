@@ -452,32 +452,53 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", 404)
 		return
 	}
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		http.Error(w, "expected websocket", http.StatusUpgradeRequired)
+		return
+	}
+	// Rejections are plain HTTP responses (PROTOCOL.md §3.2): nothing is
+	// upgraded, so there is no half-open socket to tear down.
+	ip := s.clientIP(r)
+	s.mu.Lock()
+	sh := s.shares[id]
+	if sh == nil || sh.host == nil {
+		s.mu.Unlock()
+		http.Error(w, wire.ErrNotFound, http.StatusNotFound)
+		return
+	}
+	if len(sh.joiners) >= maxJoiners {
+		s.mu.Unlock()
+		http.Error(w, wire.ErrBusy, http.StatusTooManyRequests)
+		return
+	}
+	sameIP := 0
+	for _, j := range sh.joiners {
+		if j.ip == ip {
+			sameIP++
+		}
+	}
+	if sameIP >= maxJoinersPerIP {
+		s.mu.Unlock()
+		http.Error(w, wire.ErrBusy, http.StatusTooManyRequests)
+		return
+	}
+	s.mu.Unlock()
+
 	ws, ok := s.accept(w, r)
 	if !ok {
 		return
 	}
 	now := time.Now()
-	c := &conn{ws: ws, role: roleJoiner, ip: s.clientIP(r), at: now, last: now, closed: make(chan struct{})}
+	c := &conn{ws: ws, role: roleJoiner, ip: ip, at: now, last: now, closed: make(chan struct{})}
 
+	// Re-check under the lock: the share may have changed during the upgrade.
 	s.mu.Lock()
-	sh := s.shares[id]
-	if sh == nil || sh.host == nil {
+	if s.shares[id] != sh || sh.host == nil {
 		s.mu.Unlock()
 		c.fail(wire.ErrNotFound)
 		return
 	}
 	if len(sh.joiners) >= maxJoiners {
-		s.mu.Unlock()
-		c.fail(wire.ErrBusy)
-		return
-	}
-	sameIP := 0
-	for _, j := range sh.joiners {
-		if j.ip == c.ip {
-			sameIP++
-		}
-	}
-	if sameIP >= maxJoinersPerIP {
 		s.mu.Unlock()
 		c.fail(wire.ErrBusy)
 		return

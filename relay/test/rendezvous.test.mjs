@@ -125,13 +125,22 @@ test("status reports inactive shares and rejects bad ids", async () => {
   assert.equal(bad.status, 404);
 });
 
-test("join without a host gets not_found and is closed", async () => {
-  const j = connect("/v1/join/" + randomId());
-  await j.opened;
-  const msg = await j.nextMsg();
-  assert.deepEqual(msg, { t: "error", code: "not_found" });
-  const close = await j.nextClose();
-  assert.equal(close.code, 1008);
+// A refused upgrade: the open promise rejects (Node) or the socket closes
+// before any message (other runtimes). Either way nothing is delivered.
+async function expectRefused(j) {
+  try {
+    await j.opened;
+  } catch {
+    return;
+  }
+  const item = await j.next();
+  assert.ok(item.close, "expected the connection to be refused, got " + JSON.stringify(item));
+}
+
+test("join without a host is refused before the upgrade", async () => {
+  const id = randomId();
+  const j = connect("/v1/join/" + id);
+  await expectRefused(j);
 });
 
 test("a host must register first; a bad registration is a protocol error", async () => {
@@ -225,6 +234,10 @@ test("joiner disconnect notifies host; host disconnect closes joiners with host_
   await j2.opened;
   await j2.nextMsg();
   await h.nextMsg();
+  // In the real protocol the joiner has sent its auth by the time a host
+  // could vanish; mirror that.
+  j2.send({ t: "sig", d: "auth" });
+  assert.equal((await h.nextMsg()).t, "sig");
 
   h.close();
   assert.deepEqual(await j2.nextMsg(), { t: "error", code: "host_gone" });
@@ -313,9 +326,7 @@ test("per-IP joiner cap yields busy", async () => {
     joiners.push(j);
   }
   const extra = connect("/v1/join/" + id);
-  await extra.opened;
-  assert.deepEqual(await extra.nextMsg(), { t: "error", code: "busy" });
-  await extra.nextClose();
+  await expectRefused(extra);
   for (const j of joiners) j.close();
   h.close();
 });
@@ -324,17 +335,7 @@ test("a foreign Origin header is refused", async () => {
   const id = randomId();
   const h = await host(id, randomReg());
   const j = connect("/v1/join/" + id, { Origin: "https://evil.example" });
-  let failed = false;
-  try {
-    await j.opened;
-  } catch {
-    failed = true;
-  }
-  if (!failed) {
-    // Some runtimes surface the refused upgrade as an immediate close.
-    const item = await j.next();
-    assert.ok(item.close, "expected the connection to be refused");
-  }
+  await expectRefused(j);
   h.close();
 });
 

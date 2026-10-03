@@ -159,8 +159,11 @@ use the same keepalive.
 GET wss://<host>/v1/join/<shareId>
 ```
 
-If no host is registered: `{"t":"error","code":"not_found"}` and the socket
-is closed. Otherwise:
+If no host is registered, the upgrade is refused with HTTP **404**; if the
+joiner caps (§3.4) are reached, with HTTP **429**. No socket is opened in
+either case. (Browsers cannot read the status of a failed upgrade; a web
+client checks `/v1/status/<shareId>` first to tell the two apart.)
+Otherwise the upgrade succeeds and:
 
 - server → joiner: `{"t":"joined","sid":"<b64url 12 bytes>","ice":[…]}`
 - server → host:   `{"t":"join","sid":"<same sid>","ice":[…]}`
@@ -198,9 +201,9 @@ overwrite `sid` on messages from a joiner, who has only one session).
 | joiner lifetime without a `sig`         | ≤ 120 s        |
 | joiner lifetime total                   | ≤ 30 min       |
 
-Exceeding a size or count limit yields `{"t":"error","code":"rate_limited"}`,
-the joiner cap yields `"busy"`, and the lifetime limits yield `"timeout"`;
-each is followed by a close. Hosts that send nothing (not even the
+Exceeding a size or count limit yields `{"t":"error","code":"rate_limited"}`
+and the lifetime limits yield `"timeout"`, each followed by a close; the
+joiner caps are enforced before the upgrade (HTTP 429, above). Hosts that send nothing (not even the
 keepalive) for 90 s MAY be disconnected. The server MUST NOT persist any
 message, MUST NOT log `d`, and SHOULD NOT log `shareId`.
 

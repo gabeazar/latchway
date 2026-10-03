@@ -305,18 +305,19 @@ export class ShareObject extends DurableObject {
     sendJson(ws, { t: "ready" });
   }
 
+  // Rejections are plain HTTP responses: nothing is upgraded, so there is
+  // no half-open socket to tear down, and native clients can read the code.
   async acceptJoiner(ip) {
-    const [client, server] = Object.values(new WebSocketPair());
-
-    if (this.host() === null) return this.rejectJoiner(client, server, "not_found");
-    if (this.joinerCapReached(ip)) return this.rejectJoiner(client, server, "busy");
+    if (this.host() === null) return text("not_found", 404);
+    if (this.joinerCapReached(ip)) return text("busy", 429);
 
     // The TURN fetch below may yield; re-check the caps afterwards so a
     // burst of simultaneous joins cannot slip past them.
     const ice = await this.iceServers();
-    if (this.host() === null) return this.rejectJoiner(client, server, "not_found");
-    if (this.joinerCapReached(ip)) return this.rejectJoiner(client, server, "busy");
+    if (this.host() === null) return text("not_found", 404);
+    if (this.joinerCapReached(ip)) return text("busy", 429);
 
+    const [client, server] = Object.values(new WebSocketPair());
     const sid = b64url(crypto.getRandomValues(new Uint8Array(SID_BYTES)));
     const now = Date.now();
     this.ctx.acceptWebSocket(server, ["joiner", "sid:" + sid]);
@@ -343,20 +344,6 @@ export class ShareObject extends DurableObject {
     return same >= MAX_JOINERS_PER_IP;
   }
 
-  // Accept, deliver one error, close. Accepting first lets browser clients,
-  // which cannot read HTTP error bodies on a failed upgrade, see the reason.
-  rejectJoiner(client, server, code) {
-    this.ensureAlarm(Date.now());
-    this.ctx.acceptWebSocket(server, ["rejected"]);
-    server.serializeAttachment({ role: "rejected", at: Date.now() });
-    sendJson(server, { t: "error", code });
-    // Closing before the 101 response has been returned can discard the
-    // queued error frame; close once the connection is actually in place.
-    // The sweep handles any socket this timer never reaches.
-    setTimeout(() => safeClose(server, 1008, code), 50);
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
   async ensureAlarm(now) {
     if ((await this.ctx.storage.getAlarm()) === null) {
       await this.ctx.storage.setAlarm(now + SWEEP_INTERVAL_MS);
@@ -367,7 +354,7 @@ export class ShareObject extends DurableObject {
 
   async webSocketMessage(ws, message) {
     const att = attachment(ws);
-    if (!att || att.role === "rejected") return;
+    if (!att) return;
 
     if (typeof message !== "string") return this.fail(ws, "protocol");
     if (message.length > MAX_FRAME_CHARS) return this.fail(ws, "rate_limited");
@@ -439,8 +426,6 @@ export class ShareObject extends DurableObject {
   }
 
   async webSocketClose(ws, code, reason, wasClean) {
-    const a = attachment(ws);
-    console.log("webSocketClose", a ? a.role : "?", code, wasClean);
     this.onGone(ws);
     safeClose(ws, 1000, "bye");
   }
@@ -459,7 +444,6 @@ export class ShareObject extends DurableObject {
       // closes the old host, and we already handled its joiners).
       if (this.host(ws) === null) {
         for (const j of this.ctx.getWebSockets("joiner")) {
-          console.log("host_gone -> joiner readyState", j.readyState);
           sendJson(j, { t: "error", code: "host_gone" });
           setTimeout(() => safeClose(j, 1000, "host_gone"), 50);
         }
@@ -493,9 +477,6 @@ export class ShareObject extends DurableObject {
       if (!a) continue;
       if (now - a.last > JOINER_IDLE_MS || now - a.at > JOINER_MAX_MS) this.fail(j, "timeout");
       else remaining += 1;
-    }
-    for (const r of this.ctx.getWebSockets("rejected")) {
-      safeClose(r, 1008, "rejected");
     }
     if (remaining > 0) await this.ctx.storage.setAlarm(now + SWEEP_INTERVAL_MS);
   }
