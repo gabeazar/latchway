@@ -60,3 +60,4 @@ jobs:
         with:
           title: relay tests failed
           files: relay/test.log relay/wrangler.log
+          lines: "400"
