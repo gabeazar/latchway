@@ -6,12 +6,16 @@ on:
       - "relay/**"
       - "web/**"
       - ".github/workflows/relay.yml"
+      - ".github/actions/**"
   pull_request:
     paths:
       - "relay/**"
       - "web/**"
       - ".github/workflows/relay.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -37,7 +41,6 @@ jobs:
       - name: Start the Worker locally
         run: |
           npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
-          echo $! > wrangler.pid
           for i in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:8787/healthz >/dev/null 2>&1; then
               echo "worker is up after ${i}s"; exit 0
@@ -47,8 +50,13 @@ jobs:
           echo "worker did not start"; cat wrangler.log; exit 1
 
       - name: Run tests
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
 
-      - name: Worker log
-        if: always()
-        run: cat wrangler.log || true
+      - name: Report failure
+        if: failure()
+        uses: ./.github/actions/report-log
+        with:
+          title: relay tests failed
+          files: relay/test.log relay/wrangler.log

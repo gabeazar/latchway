@@ -11,6 +11,9 @@ import { DurableObject } from "cloudflare:workers";
 
 const SHARE_ID_RE = /^[A-Za-z0-9_-]{22}$/;
 const SID_BYTES = 12;
+// WebSocket.readyState value for an open socket (the named constant is not
+// guaranteed to exist on every runtime's WebSocket class).
+const WS_OPEN = 1;
 
 // Normative limits from PROTOCOL.md §3.4.
 const MAX_PAYLOAD_CHARS = 16 * 1024;
@@ -362,7 +365,7 @@ export class ShareObject extends DurableObject {
       // closes the old host, and we already handled its joiners).
       const live = this.ctx
         .getWebSockets("host")
-        .filter((h) => h !== ws && h.readyState === WebSocket.OPEN);
+        .filter((h) => h !== ws && h.readyState === WS_OPEN);
       if (live.length === 0) {
         for (const j of this.ctx.getWebSockets("joiner")) {
           sendJson(j, { t: "error", code: "host_gone" });
@@ -397,7 +400,7 @@ export class ShareObject extends DurableObject {
     let best = null;
     let bestAt = -1;
     for (const ws of this.ctx.getWebSockets("host")) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (ws.readyState !== WS_OPEN) continue;
       const a = attachment(ws);
       const at = a ? a.at : 0;
       if (at > bestAt) {
@@ -411,7 +414,7 @@ export class ShareObject extends DurableObject {
   joiner(sid) {
     if (typeof sid !== "string" || sid.length > 64) return null;
     for (const ws of this.ctx.getWebSockets("sid:" + sid)) {
-      if (ws.readyState === WebSocket.OPEN) return ws;
+      if (ws.readyState === WS_OPEN) return ws;
     }
     return null;
   }
@@ -479,7 +482,7 @@ function attachment(ws) {
 
 function sendJson(ws, obj) {
   try {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+    if (ws.readyState === WS_OPEN) ws.send(JSON.stringify(obj));
   } catch {
     // The socket is going away; nothing useful to do.
   }

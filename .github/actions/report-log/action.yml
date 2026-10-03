@@ -1,0 +1,43 @@
+name: Report log as commit comment
+description: >
+  Posts the tail of one or more log files as a comment on the commit, so the
+  outcome of a CI job can be read through the GitHub API without downloading
+  log archives. Used on failure only.
+inputs:
+  files:
+    description: Space-separated list of log files to include.
+    required: true
+  title:
+    description: Heading for the comment.
+    required: true
+  lines:
+    description: How many trailing lines of each file to include.
+    required: false
+    default: "250"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        FILES: ${{ inputs.files }}
+        TITLE: ${{ inputs.title }}
+        LINES: ${{ inputs.lines }}
+      run: |
+        body="### ${TITLE}"$'\n'"Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"$'\n'
+        for f in $FILES; do
+          if [ -f "$f" ]; then
+            body+=$'\n'"<details><summary><code>${f}</code> (last ${LINES} lines)</summary>"$'\n\n'
+            body+='```'$'\n'
+            body+="$(tail -n "$LINES" "$f" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-400)"$'\n'
+            body+='```'$'\n'"</details>"$'\n'
+          else
+            body+=$'\n'"(missing: ${f})"$'\n'
+          fi
+        done
+        # Commit comments are capped at 65536 characters.
+        body="${body:0:60000}"
+        printf '%s' "$body" > /tmp/ci-comment.md
+        gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+          -f body=@/tmp/ci-comment.md >/dev/null && echo "posted commit comment" \
+          || echo "could not post commit comment"
