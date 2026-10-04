@@ -4,51 +4,217 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Latchway</title>
+  <meta name="theme-color" content="#f7f8f6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14202d" media="(prefers-color-scheme: dark)">
+  <title>Latchway: send a big file from your phone straight to theirs</title>
   <meta name="description" content="Send a big file from your phone straight to a friend's with a link. Encrypted end to end, no accounts, no cloud copy. Open source.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Latchway">
+  <meta property="og:title" content="Latchway">
+  <meta property="og:description" content="Send a big file from your phone straight to a friend's with a link. Encrypted end to end, no accounts, no cloud copy.">
+  <meta property="og:url" content="https://latchway.app/">
+  <meta property="og:image" content="https://latchway.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/latch.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Latchway home">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64">
+            <rect class="post" x="6" y="9" width="8" height="46" rx="4"/>
+            <rect class="post" x="50" y="9" width="8" height="46" rx="4"/>
+            <path class="keeper" d="M40 23.5h11.5a3.5 3.5 0 0 1 3.5 3.5v10a3.5 3.5 0 0 1-3.5 3.5H40" fill="none" stroke-width="4" stroke-linecap="round"/>
+            <rect class="bar" x="12" y="27.5" width="37" height="9" rx="4.5"/>
+            <circle class="pivot" cx="19" cy="32" r="2.8"/>
+          </svg>
+        </span>
+        Latchway
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="#how">How it works</a>
+        <a href="/privacy">Privacy</a>
+        <a href="https://github.com/gabeazar/latchway" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
   <main>
-    <div class="mark" aria-hidden="true">
-      <svg viewBox="0 0 64 64">
-        <rect class="post" x="7" y="10" width="7" height="44" rx="3.5"/>
-        <rect class="post" x="50" y="10" width="7" height="44" rx="3.5"/>
-        <path class="keeper" d="M44 24h8a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-8" fill="none" stroke-width="4" stroke-linecap="round"/>
-        <rect class="bar" x="13" y="28" width="36" height="8" rx="4"/>
-        <circle class="pivot" cx="19" cy="32" r="2.6"/>
-      </svg>
-    </div>
+    <section class="hero">
+      <div class="wrap">
+        <h1>Send a big file from your phone. Straight to theirs.</h1>
+        <p class="lede">Pick a file, get a link, send the link however you like. When your friend opens it, the file travels from your phone to theirs. No upload to a cloud, no account, no size limit beyond what your phones can hold.</p>
+        <div class="actions">
+          <a class="button primary" href="#terminal">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg>
+            Send a file from your terminal
+          </a>
+          <a class="button secondary" href="https://github.com/gabeazar/latchway" rel="noopener">Follow the Android app</a>
+        </div>
+        <p class="status-line">The Android app and receiving in the browser are in development. The protocol, the servers and the command-line tools are finished and open source.</p>
+      </div>
+    </section>
 
-    <h1>Send a big file from your phone. Straight to theirs.</h1>
-    <p class="lede">Pick a file, get a link, send the link however you like. When your friend opens it, the file travels from your phone to theirs. No upload to a cloud, no account, no size limit beyond what your phones can hold.</p>
+    <section class="wrap">
+      <figure class="illustration">
+        <svg viewBox="0 0 720 266" role="img" aria-labelledby="ill-title">
+          <title id="ill-title">Two phones connected directly by an encrypted channel; a small rendezvous server above only introduces them.</title>
+          <!-- rendezvous -->
+          <path class="ill-cloud" d="M318 56c-14 0-24-9-24-21s10-21 23-21c4-13 16-22 30-22 16 0 29 11 32 25 12 1 21 10 21 20 0 11-10 19-22 19z"/>
+          <text class="ill-text-soft" x="360" y="40" text-anchor="middle">rendezvous</text>
+          <text class="ill-text-soft" x="360" y="84" text-anchor="middle">introduces the two phones, sees no file</text>
+          <path class="ill-soft-stroke" d="M300 50 C 240 70, 200 90, 150 110"/>
+          <path class="ill-soft-stroke" d="M420 50 C 480 70, 520 90, 570 110"/>
 
-    <div class="actions">
-      <a class="button primary" href="https://github.com/gabeazar/latchway/releases/latest" rel="noopener">Get Latchway for Android</a>
-      <a class="button secondary" href="https://github.com/gabeazar/latchway" rel="noopener">Read the source on GitHub</a>
-    </div>
+          <!-- left phone -->
+          <rect class="ill-phone" x="72" y="104" width="110" height="130" rx="16"/>
+          <rect class="ill-screen" x="84" y="118" width="86" height="92" rx="8"/>
+          <rect class="ill-ink" x="112" y="109" width="30" height="4" rx="2"/>
+          <!-- file glyph -->
+          <path class="ill-stroke" d="M112 140h20l10 10v30h-30z"/>
+          <path class="ill-stroke" d="M132 140v10h10"/>
+          <text class="ill-text" x="127" y="258" text-anchor="middle">your phone</text>
 
-    <h2>How it stays private</h2>
-    <p>The link carries the key. Everything is encrypted on your phone before it leaves and decrypted only on your friend's. You can add a password to the link, approve each download by hand, set the link to expire, or cancel it instantly.</p>
+          <!-- right phone -->
+          <rect class="ill-phone" x="538" y="104" width="110" height="130" rx="16"/>
+          <rect class="ill-screen" x="550" y="118" width="86" height="92" rx="8"/>
+          <rect class="ill-ink" x="578" y="109" width="30" height="4" rx="2"/>
+          <path class="ill-stroke" d="M578 140h20l10 10v30h-30z"/>
+          <path class="ill-stroke" d="M598 140v10h10"/>
+          <path class="ill-stroke" d="M584 168l6 6 12-14"/>
+          <text class="ill-text" x="593" y="258" text-anchor="middle">their phone</text>
 
-    <h2>What this server sees</h2>
-    <ul class="facts">
-      <li><span>The file</span><span>Never. It moves phone to phone.</span></li>
-      <li><span>The file's name or size</span><span>Never. They're encrypted too.</span></li>
-      <li><span>The key</span><span>Never. It lives after the <b>#</b> in the link, which browsers don't send to servers.</span></li>
-      <li><span>What it does see</span><span>That two phones want to meet, and their addresses, for the few seconds it takes to introduce them.</span></li>
-    </ul>
+          <!-- the direct, encrypted channel: the brass bar -->
+          <rect class="ill-brass-soft" x="186" y="156" width="348" height="30" rx="15"/>
+          <rect class="ill-brass" x="194" y="166" width="332" height="10" rx="5"/>
+          <!-- lock -->
+          <rect class="ill-ink" x="347" y="164" width="26" height="20" rx="4"/>
+          <path class="ill-stroke" d="M352 164v-6a8 8 0 0 1 16 0v6"/>
+          <text class="ill-text" x="360" y="212" text-anchor="middle">the file, encrypted end to end</text>
+        </svg>
+        <figcaption>The server introduces two phones. The file never goes near it.</figcaption>
+      </figure>
+    </section>
 
-    <h2>When phones can't connect directly</h2>
-    <p>Roughly one connection in ten hits a network that won't allow a direct path. Then the encrypted stream is relayed through Cloudflare's TURN service, which can't read it either. Prefer that always, to keep your address private from the other person? Turn on relay-only mode in the app.</p>
+    <section id="how">
+      <div class="wrap">
+        <span class="eyebrow">How it works</span>
+        <h2>Three steps, one link.</h2>
+        <ol class="steps">
+          <li>
+            <h3>Pick a file</h3>
+            <p>Your phone makes a random key and a link that carries it. Nothing is uploaded; the file stays where it is.</p>
+          </li>
+          <li>
+            <h3>Send the link</h3>
+            <p>Text it, email it, show the QR code. Anyone who opens the complete link, and only them, can receive the file.</p>
+          </li>
+          <li>
+            <h3>It crosses directly</h3>
+            <p>Your friend's phone connects to yours and the file streams between them, sealed with the key from the link.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
 
-    <h2>Run your own</h2>
-    <p>Everything, including this server, is open source under the GPL. Point the app at your own server from its settings if you'd rather not use this one.</p>
+    <section>
+      <div class="wrap">
+        <span class="eyebrow">You stay in control</span>
+        <h2>The sender decides who gets the file, and for how long.</h2>
+        <div class="features">
+          <div class="feature">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.9 12.1 20 3M15 5l3 3M18 5l1.5 1.5"/></svg></span>
+            <h3>Password on the link</h3>
+            <p>Folded into the encryption key itself, so the server has nothing to check and your phone does the checking.</p>
+          </div>
+          <div class="feature">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <h3>Approve each download</h3>
+            <p>See that someone is asking before a single byte leaves your phone, and say no if it isn't who you expected.</p>
+          </div>
+          <div class="feature">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <h3>Expiry and stop</h3>
+            <p>Limit a link to a number of downloads or a span of time, or stop sharing at any moment. The link dies instantly.</p>
+          </div>
+          <div class="feature">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></span>
+            <h3>Relay only</h3>
+            <p>Normally the two phones connect directly and learn each other's address. Turn this on and yours is never revealed.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <span class="eyebrow">Privacy by construction</span>
+        <h2>What this server sees</h2>
+        <p class="measure muted">The key is the part of the link after the <b>#</b>. Browsers never send that part to any server, so it stays between the two phones. Everything the server relays is encrypted with it.</p>
+        <ul class="facts">
+          <li><span>The file</span><span><span class="never">Never.</span> It moves phone to phone.</span></li>
+          <li><span>The file's name or size</span><span><span class="never">Never.</span> They're encrypted too, and padded so even the length tells nothing.</span></li>
+          <li><span>The key or password</span><span><span class="never">Never.</span> The key lives after the <b>#</b>; the password is checked by your phone, not by us.</span></li>
+          <li><span>What it does see</span><span>That two phones want to meet, and their addresses, for the few seconds it takes to introduce them.</span></li>
+        </ul>
+        <p class="small muted">Roughly one connection in ten hits a network that won't allow a direct path. Then the encrypted stream is relayed through Cloudflare's TURN service, which can't read it either. The full picture is in the <a href="/privacy">privacy policy</a> and in the <a href="https://github.com/gabeazar/latchway/blob/main/docs/PROTOCOL.md" rel="noopener">protocol specification</a>.</p>
+      </div>
+    </section>
+
+    <section id="terminal">
+      <div class="wrap">
+        <span class="eyebrow">Available now</span>
+        <h2>From the command line, on any computer.</h2>
+        <p class="measure muted">The same protocol the phone app will speak, as two small tools. Install with Go, send from one machine, receive on another.</p>
+<pre class="terminal"><code><span class="c"># install</span>
+go install github.com/gabeazar/latchway/cmd/latchway-send@latest
+go install github.com/gabeazar/latchway/cmd/latchway-receive@latest
+
+<span class="c"># on your machine: prints a link and waits for one download</span>
+<span class="p">$</span> latchway-send holiday.mp4
+https://latchway.app/s/…#…
+
+<span class="c"># on theirs</span>
+<span class="p">$</span> latchway-receive 'https://latchway.app/s/…#…'
+Receiving holiday.mp4 (2.1 GiB)
+Saved holiday.mp4</code></pre>
+        <p class="small muted">Add <code>--password</code>, <code>--approve</code>, <code>--downloads 3</code>, <code>--expire 2h</code> or <code>--relay-only</code> to the sender. Both tools take <code>--rendezvous</code> to use your own server.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="split">
+          <div class="card">
+            <h3>Open source, GPL-3.0</h3>
+            <p>Every piece, from the phone app to this server, is in one repository with its specification and test vectors. Read it, build it, audit it.</p>
+            <p><a href="https://github.com/gabeazar/latchway" rel="noopener">github.com/gabeazar/latchway</a></p>
+          </div>
+          <div class="card">
+            <h3>Run your own</h3>
+            <p>The rendezvous is a single Go binary or a free Cloudflare Worker. Point the app at your server from its settings and this one is out of the picture.</p>
+            <p><a href="https://github.com/gabeazar/latchway/blob/main/docs/HOSTING.md" rel="noopener">Hosting guide</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <footer>
-    <p>Made by Gabe Azar. <a href="https://github.com/gabeazar/latchway" rel="noopener">Source</a>, <a href="/privacy">privacy</a>, <a href="https://github.com/gabeazar/latchway/blob/main/SECURITY.md" rel="noopener">reporting a security issue</a>.</p>
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Made by Gabe Azar.</p>
+      <nav aria-label="Footer">
+        <a href="https://github.com/gabeazar/latchway" rel="noopener">Source</a>
+        <a href="/privacy">Privacy</a>
+        <a href="https://github.com/gabeazar/latchway/blob/main/SECURITY.md" rel="noopener">Report a security issue</a>
+      </nav>
+    </div>
   </footer>
 </body>
 </html>

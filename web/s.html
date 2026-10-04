@@ -1,59 +1,107 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="share">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f7f8f6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14202d" media="(prefers-color-scheme: dark)">
   <title>A file is waiting for you · Latchway</title>
   <meta name="description" content="Someone is sending you a file with Latchway. It moves straight from their phone to yours, encrypted end to end.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Latchway">
+  <meta property="og:title" content="Someone sent you a file with Latchway">
+  <meta property="og:description" content="It moves straight from their device to yours, encrypted end to end. No cloud copy.">
+  <meta property="og:image" content="https://latchway.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/latch.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body class="share">
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Latchway home">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64">
+            <rect class="post" x="6" y="9" width="8" height="46" rx="4"/>
+            <rect class="post" x="50" y="9" width="8" height="46" rx="4"/>
+            <path class="keeper" d="M40 23.5h11.5a3.5 3.5 0 0 1 3.5 3.5v10a3.5 3.5 0 0 1-3.5 3.5H40" fill="none" stroke-width="4" stroke-linecap="round"/>
+            <rect class="bar" x="12" y="27.5" width="37" height="9" rx="4.5"/>
+            <circle class="pivot" cx="19" cy="32" r="2.8"/>
+          </svg>
+        </span>
+        Latchway
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/">How it works</a>
+        <a href="/privacy">Privacy</a>
+      </nav>
+    </div>
+  </header>
+
   <main>
-    <div class="mark" aria-hidden="true">
-      <svg viewBox="0 0 64 64">
-        <rect class="post" x="7" y="10" width="7" height="44" rx="3.5"/>
-        <rect class="post" x="50" y="10" width="7" height="44" rx="3.5"/>
-        <path class="keeper" d="M44 24h8a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-8" fill="none" stroke-width="4" stroke-linecap="round"/>
-        <rect class="bar" x="13" y="28" width="36" height="8" rx="4"/>
-        <circle class="pivot" cx="19" cy="32" r="2.6"/>
-      </svg>
-    </div>
+    <section class="hero">
+      <div class="wrap">
+        <h1>Someone sent you a file.</h1>
+        <p class="lede">It's still on their device. Latchway moves it straight to yours, encrypted the whole way, with no cloud copy in between.</p>
 
-    <h1>Someone sent you a file.</h1>
-    <p class="lede">It's still on their phone. Latchway moves it straight to yours, encrypted the whole way, with no cloud copy in between.</p>
+        <div class="file-card">
+          <p id="status" class="status" aria-live="polite">
+            <span class="dot"></span>
+            <span id="status-text">Checking whether the sender is online…</span>
+          </p>
 
-    <p id="status" class="status" aria-live="polite">
-      <span class="dot"></span>
-      <span id="status-text">Checking whether the sender is online…</span>
-    </p>
+          <div id="actions" class="actions">
+            <a id="open" class="button primary" href="#">Open in Latchway</a>
+            <a id="get" class="button secondary" href="https://github.com/gabeazar/latchway" rel="noopener">Get Latchway</a>
+          </div>
 
-    <div id="actions" class="actions">
-      <a id="open" class="button primary" href="#">Open in Latchway</a>
-      <a id="get" class="button secondary" href="https://github.com/gabeazar/latchway/releases/latest" rel="noopener">Get Latchway for Android</a>
-    </div>
+          <div id="install-hint" class="note hidden">
+            <p>Nothing opened? You need the Latchway app on this phone. Install it, come back to this page and tap <b>Open in Latchway</b> again. The file stays available as long as the sender keeps sharing it.</p>
+          </div>
 
-    <div id="install-hint" class="note hidden">
-      <p>Nothing opened? You need the Latchway app on this phone. Install it, come back to this page and tap <b>Open in Latchway</b> again. The file stays available as long as the sender keeps sharing it.</p>
-    </div>
+          <div id="not-android" class="note hidden">
+            <p>The Latchway phone app is still in development, and receiving straight from this page is on the way. Today you can receive on any computer with the command-line tool:</p>
+<pre class="terminal"><code>go install github.com/gabeazar/latchway/cmd/latchway-receive@latest
+latchway-receive '<span id="cmd-link">this link</span>'</code></pre>
+          </div>
 
-    <div id="not-android" class="note hidden">
-      <p>Latchway is an Android app for now. Downloading straight from this page in a browser is on the way, which will cover iPhones and computers too.</p>
-    </div>
+          <div id="bad-link" class="note hidden">
+            <p>This link is incomplete. The part after the <b>#</b> is the key that unlocks the file, and it's missing. Ask the sender to share the link again, ideally by pasting it rather than retyping it.</p>
+          </div>
+        </div>
 
-    <div id="bad-link" class="note hidden">
-      <p>This link is incomplete. The part after the <b>#</b> is the key that unlocks the file, and it's missing. Ask the sender to share the link again, ideally by pasting it rather than retyping it.</p>
-    </div>
-
-    <h2>What happens when you open it</h2>
-    <p>Latchway on your phone connects to the sender's phone directly and asks for the file. Only someone holding this exact link can decrypt it; the server that showed you this page can't, and never sees the file at all.</p>
+        <h2>What happens when you open it</h2>
+        <ol class="steps">
+          <li>
+            <h3>Your device connects to theirs</h3>
+            <p>Through a brief introduction by latchway.app, which sees that two devices want to meet and nothing else.</p>
+          </li>
+          <li>
+            <h3>The key never leaves you</h3>
+            <p>Only someone holding this exact link can decrypt the file. The part after the <b>#</b> is never sent to any server.</p>
+          </li>
+          <li>
+            <h3>The file streams across</h3>
+            <p>Directly from their device to yours, sealed chunk by chunk. If the sender set a password, you'll be asked for it.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
   </main>
 
-  <footer>
-    <p>Latchway is <a href="https://github.com/gabeazar/latchway" rel="noopener">open source</a>. This page stores nothing about you.</p>
-    <p><a href="/">How Latchway works</a></p>
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Latchway is <a href="https://github.com/gabeazar/latchway" rel="noopener">open source</a>. This page stores nothing about you.</p>
+      <nav aria-label="Footer">
+        <a href="/">How Latchway works</a>
+        <a href="/privacy">Privacy</a>
+      </nav>
+    </div>
   </footer>
 
   <script src="/share.js"></script>

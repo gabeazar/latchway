@@ -85,6 +85,7 @@ docs/HOSTING.md          deploying the rendezvous (Cloudflare free plan, or Dock
 docs/ROADMAP.md          what comes next, including receiving in the browser
 relay/                   Cloudflare Worker rendezvous (plain JavaScript)
 web/                     static pages served at latchway.app
+brand/                   the mark, app icon and social card as SVG, plus the renderer
 internal/wire            keys, proofs, encrypted envelopes, chunk frames (Go)
 internal/rendezvous      WebSocket client for the rendezvous protocol (Go)
 internal/server          self-hostable rendezvous server (Go)

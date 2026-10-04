@@ -25,6 +25,13 @@ Start here, in order: this file, `docs/PROTOCOL.md` (the contract),
   identically; the same test suite runs against both.
 - **No telemetry, no third-party scripts, no new permissions** without a
   discussion. Pages keep the strict CSP and `Referrer-Policy: no-referrer`.
+  The CSP forbids inline `style=` attributes and inline scripts; all
+  styling goes in `web/style.css`, behaviour in `web/share.js`.
+- **Brand assets are SVG first.** Edit `brand/*.svg`, run
+  `npm install --no-save @resvg/resvg-js && node brand/render.mjs`, commit
+  the PNGs it writes into `web/`. Palette and type are in `brand/README.md`.
+  Review pages with headless Edge/Chrome before shipping; the Chrome
+  extension is not needed.
 - **Both rendezvous implementations and the spec move together.** A
   behaviour change touches `relay/src/index.js`, `internal/server/server.go`,
   `docs/PROTOCOL.md` and `relay/test/rendezvous.test.mjs` in one commit.
@@ -39,6 +46,7 @@ docs/PLAY_STORE.md        listing checklist, data-safety answers, permissions
 relay/                    Cloudflare Worker + Durable Object (plain JS, no build step)
 relay/test/               behaviour suite; runs against ANY rendezvous via RELAY_URL
 web/                      static pages for latchway.app (also embedded in the Go binary)
+brand/                    SVG sources of the mark, app icon, social card; render.mjs → web/*.png
 internal/wire             keys, proofs, envelopes, padded meta, chunk frames (Go)
 internal/rendezvous       WebSocket client for hosts and joiners (Go)
 internal/server           self-hostable rendezvous (Go)

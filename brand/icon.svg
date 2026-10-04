@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Latchway">
+  <!--
+    App icon: the mark on an ink tile. The geometry is latch.svg scaled
+    6.4x and inset so it sits inside the 66% safe zone that Android
+    adaptive icons and maskable web icons crop to.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#24334A"/>
+      <stop offset="1" stop-color="#16212E"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+  <g transform="translate(96 96) scale(5)">
+    <rect x="6" y="9" width="8" height="46" rx="4" fill="#F7F8F6"/>
+    <rect x="50" y="9" width="8" height="46" rx="4" fill="#F7F8F6"/>
+    <path d="M40 23.5h11.5a3.5 3.5 0 0 1 3.5 3.5v10a3.5 3.5 0 0 1-3.5 3.5H40" fill="none" stroke="#F7F8F6" stroke-width="4" stroke-linecap="round"/>
+    <rect x="12" y="27.5" width="37" height="9" rx="4.5" fill="#D2A24A"/>
+    <circle cx="19" cy="32" r="2.8" fill="#16212E"/>
+  </g>
+</svg>

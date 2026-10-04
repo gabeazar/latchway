@@ -1,8 +1,9 @@
 // Share page behaviour for /s/<shareId>#<secret>.
 //
 // Privacy rule for this file: the fragment (the secret) is read only to
-// build the deep link that hands it to the app on this device. It is never
-// sent anywhere, logged, or stored.
+// build the deep link that hands it to the app on this device, and to show
+// the receiver their own complete link in the command-line hint. It is
+// never sent anywhere, logged, or stored.
 (function () {
   "use strict";
 
@@ -19,6 +20,7 @@
   var installHint = document.getElementById("install-hint");
   var notAndroid = document.getElementById("not-android");
   var badLink = document.getElementById("bad-link");
+  var cmdLink = document.getElementById("cmd-link");
 
   function show(el) { el.classList.remove("hidden"); }
   function hide(el) { el.classList.add("hidden"); }
@@ -34,6 +36,7 @@
   // version of the same link opens the app directly on Android when App
   // Links verification is in place; this is the fallback path.
   openBtn.setAttribute("href", "latchway://" + location.host + "/s/" + shareId + fragment);
+  if (cmdLink) cmdLink.textContent = "https://" + location.host + "/s/" + shareId + fragment;
 
   var isAndroid = /Android/i.test(navigator.userAgent);
   if (!isAndroid) show(notAndroid);
@@ -54,7 +57,7 @@
         statusText.textContent = "The sender is online. The file is ready.";
       } else {
         status.classList.add("offline");
-        statusText.textContent = "The sender isn't online right now. Latchway needs to be open on their phone for the file to come through. You can still install the app and try again later.";
+        statusText.textContent = "The sender isn't online right now. Latchway needs to be running on their device for the file to come through.";
       }
     })
     .catch(function () {

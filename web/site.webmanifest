@@ -1,0 +1,14 @@
+{
+  "name": "Latchway",
+  "short_name": "Latchway",
+  "description": "Send a big file from your phone straight to theirs. Encrypted end to end, no cloud copy.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#f7f8f6",
+  "theme_color": "#1d2a3a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/latch.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"strings"
@@ -100,6 +101,11 @@ type Server struct {
 	mu     sync.Mutex
 	shares map[string]*share
 	mux    *http.ServeMux
+}
+
+func init() {
+	// Not in Go's built-in table; the Worker's asset host knows it.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 }
 
 // New creates a server and starts its sweeper.

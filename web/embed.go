@@ -4,8 +4,9 @@ package web
 
 import "embed"
 
-// FS holds index.html, s.html, 404.html, style.css, share.js, latch.svg and
-// robots.txt.
+// FS holds the pages (index, s, privacy, 404), style.css, share.js, the
+// brand assets (latch.svg, the PNG icons, og.png), site.webmanifest and
+// robots.txt. The sources of the rendered images are in brand/.
 //
-//go:embed *.html *.css *.js *.svg *.txt
+//go:embed *.html *.css *.js *.svg *.png *.txt *.webmanifest
 var FS embed.FS
