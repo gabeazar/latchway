@@ -1,0 +1,120 @@
+name: deploy-relay
+
+# Deploys the rendezvous Worker to Cloudflare from GitHub, so changes go
+# live on push without anyone running wrangler locally.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   token created in the Cloudflare dashboard, see
+#                          docs/HOSTING.md §A for the exact permissions
+#   CLOUDFLARE_ACCOUNT_ID  the account id shown on the Workers overview page
+#
+# Until the secrets exist the workflow exits early and does nothing.
+#
+# Run it by hand with "Set up TURN" ticked once: it creates a TURN key in
+# the account and stores its id and token as Worker secrets. Nothing from
+# that step is written to GitHub or printed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "relay/**"
+      - "web/**"
+      - ".github/workflows/deploy-relay.yml"
+  workflow_dispatch:
+    inputs:
+      setup_turn:
+        description: "Set up TURN: create a Cloudflare TURN key and store it as Worker secrets"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-relay
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: relay
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for credentials
+        id: creds
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN is not set; nothing to deploy yet."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          node-version: 22
+
+      - name: Install wrangler
+        if: steps.creds.outputs.ready == 'true'
+        run: npm install --no-audit --no-fund
+
+      - name: Deploy
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          set -o pipefail
+          npx wrangler deploy 2>&1 | tee deploy.log
+
+      - name: Set up TURN
+        if: steps.creds.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.setup_turn
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_ACCOUNT_ID is required to create a TURN key"; exit 1
+          fi
+          resp=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/calls/turn_keys" \
+            --request POST \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data '{"name":"latchway"}') || { echo "TURN key creation failed"; exit 1; }
+          uid=$(printf '%s' "$resp" | jq -r '.result.uid // empty')
+          key=$(printf '%s' "$resp" | jq -r '.result.key // empty')
+          if [ -z "$uid" ] || [ -z "$key" ]; then
+            printf '%s' "$resp" | jq 'del(.result.key)'
+            echo "unexpected response shape"; exit 1
+          fi
+          echo "::add-mask::$uid"
+          echo "::add-mask::$key"
+          printf '%s' "$uid" | npx wrangler secret put TURN_KEY_ID
+          printf '%s' "$key" | npx wrangler secret put TURN_KEY_API_TOKEN
+          echo "TURN key created and stored as Worker secrets."
+
+      - name: Smoke test
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          for host in latchway.app; do
+            for i in $(seq 1 12); do
+              if curl -fsS "https://${host}/healthz" >/dev/null 2>&1; then
+                echo "https://${host} is up"; break
+              fi
+              sleep 10
+            done
+          done
+          curl -fsS -D - -o /dev/null https://latchway.app/healthz || echo "custom domain not answering yet (certificate may still be issuing)"
+
+      - name: Report failure
+        if: failure()
+        uses: ./.github/actions/report-log
+        with:
+          title: relay deploy failed
+          files: relay/deploy.log

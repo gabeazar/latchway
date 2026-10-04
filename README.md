@@ -69,7 +69,7 @@ This repository is being built in the open. Current state:
 | Desktop command-line sender/receiver (`cmd/latchway-send`, `cmd/latchway-receive`) | Waiting on the above |
 | Android app (`android/`) | Waiting on the above |
 
-The missing piece is specified in detail in PROTOCOL.md §4, and the
+The order of work from here is in [`docs/ROADMAP.md`](docs/ROADMAP.md). The missing piece is specified in detail in PROTOCOL.md §4, and the
 `wire` package plus [`testdata/vectors.json`](testdata/vectors.json)
 give any implementation a tested foundation to build on. Contributions are
 welcome; see the contributing notes below.
@@ -79,6 +79,7 @@ welcome; see the contributing notes below.
 ```
 docs/PROTOCOL.md         the wire protocol, single source of truth
 docs/HOSTING.md          deploying the rendezvous (Cloudflare free plan, or Docker)
+docs/ROADMAP.md          what comes next, including receiving in the browser
 relay/                   Cloudflare Worker rendezvous (plain JavaScript)
 web/                     static pages served at latchway.app
 internal/wire            keys, proofs, encrypted envelopes, chunk frames (Go)

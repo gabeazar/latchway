@@ -16,17 +16,52 @@ your own is never required to use the app.
 
 ---
 
-## A. Cloudflare Worker, from your phone or laptop
+## A. Cloudflare Worker
 
-You need: a free Cloudflare account, this repository on GitHub, and
-(optionally) a domain registered on Cloudflare. No command line.
+Two ways to get the Worker deployed. Both end in the same place: every push
+to `main` redeploys automatically, and the domain, certificate and Durable
+Object are created for you.
 
-### 1. Create the Worker from the repository
+### Option 1: GitHub deploys it (recommended)
 
-1. Open the Cloudflare dashboard → **Workers & Pages** → **Create**.
-2. Choose **Import a repository** and connect your GitHub account when
-   asked. Pick `latchway`.
-3. Fill the build settings exactly like this:
+GitHub Actions runs `wrangler deploy` with a scoped Cloudflare API token.
+Everything afterwards, including TURN setup, is automated. You do two
+things once, both from a phone:
+
+**Create the API token** in the Cloudflare dashboard: profile menu →
+**My Profile** → **API Tokens** → **Create Token** → use the
+**Edit Cloudflare Workers** template, then add two permissions before
+continuing:
+
+| Permission | Why |
+|---|---|
+| Account → **Realtime** (Cloudflare Calls) → **Edit** | lets the workflow create the TURN key |
+| Zone → **DNS** → **Edit**, zone `latchway.app` | lets the deploy attach the custom domain |
+
+Under *Account Resources* pick your account; under *Zone Resources* pick
+`latchway.app`. Create, and copy the token (shown once).
+
+**Add two secrets** on GitHub: repository → **Settings** → **Secrets and
+variables** → **Actions** → **New repository secret**:
+
+| Name | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | the token |
+| `CLOUDFLARE_ACCOUNT_ID` | the account id (Workers & Pages overview, right-hand column, or the long hex string in the dashboard URL) |
+
+That's it. The next push, or **Actions → deploy-relay → Run workflow**,
+deploys to `https://latchway.app`. Run it once with **Set up TURN**
+ticked: the workflow creates a TURN key in your account and stores its id
+and token as Worker secrets, without ever writing them to GitHub.
+
+### Option 2: Cloudflare pulls from the repository
+
+No API token anywhere; Cloudflare's own build service watches the repo.
+TURN then has to be configured by hand (step 3 below).
+
+1. Dashboard → **Workers & Pages** → **Create** → **Import a repository**,
+   connect GitHub, pick `latchway`.
+2. Build settings:
 
    | Setting | Value |
    |---|---|
@@ -36,28 +71,25 @@ You need: a free Cloudflare account, this repository on GitHub, and
    | Build command | *(leave empty)* |
    | Deploy command | `npx wrangler deploy` |
 
-4. Select **Save and Deploy**. The first build takes about a minute. From
-   now on every push to `main` redeploys automatically.
+3. **Save and Deploy**.
 
-The Worker is immediately reachable at `https://latchway.<your-subdomain>.workers.dev`.
+### 2. The domain
 
-### 2. Attach the domain
+`relay/wrangler.toml` declares `latchway.app` and `www.latchway.app` as
+custom domains. Because the domain is registered in the same Cloudflare
+account, the deploy creates the DNS records and certificate. Nothing to
+click. The Worker also answers at `https://latchway.<subdomain>.workers.dev`.
 
-`relay/wrangler.toml` already declares `latchway.app` and `www.latchway.app`
-as custom domains. If the domain lives in the same Cloudflare account, the
-deploy creates the DNS records and certificate for you. Nothing to click.
-
-If you use a different domain, edit the two `pattern` values in
+For a different domain, edit the two `pattern` values in
 `relay/wrangler.toml` and push.
 
-### 3. Turn on the TURN fallback (recommended)
+### 3. TURN fallback, by hand (only if you chose Option 2)
 
-Without this step, the roughly one-in-ten connections that can't be punched
-through both NATs will fail instead of falling back to a relay.
+Without TURN, the roughly one-in-ten connections that can't be punched
+through both NATs fail instead of falling back to a relay.
 
-1. Dashboard → **Realtime** → **TURN** → **Create**. Give the key a name
-   ("latchway"). Copy the **Key ID** and the **API Token**; the token is
-   shown once.
+1. Dashboard → **Realtime** → **TURN** → **Create**. Name it "latchway".
+   Copy the **Key ID** and the **API Token**; the token is shown once.
 2. Dashboard → **Workers & Pages** → **latchway** → **Settings** →
    **Variables and Secrets** → **Add**:
 
@@ -66,12 +98,12 @@ through both NATs will fail instead of falling back to a relay.
    | `TURN_KEY_ID` | Secret | the key id |
    | `TURN_KEY_API_TOKEN` | Secret | the API token |
 
-3. **Deploy** (the button next to the variables) so the running Worker
-   picks them up.
+3. **Deploy** (the button next to the variables).
 
-The Worker generates short-lived TURN credentials (2-hour TTL) per share
-and caches them for an hour. Monitor usage under Realtime → TURN →
-Analytics; the first 1,000 GB each month are free, then $0.05/GB.
+Either way, the Worker then issues 12-hour TURN credentials to
+authenticated senders and refreshes them hourly. Monitor usage under
+Realtime → TURN → Analytics; the first 1,000 GB each month are free, then
+$0.05/GB.
 
 ### 4. Make https links open the app directly (App Links)
 
@@ -82,11 +114,11 @@ the domain vouches for the app's signing key.
    Store build it's under Play Console → **Test and release** → **App
    integrity** → **App signing key certificate**. For a local build:
    `keytool -list -v -keystore <keystore> | grep SHA256`.
-2. Dashboard → **latchway** → **Settings** → **Variables and Secrets** →
-   edit `ASSETLINKS_FINGERPRINTS` → paste the fingerprint(s), comma-separated,
-   in the `AA:BB:…` form.
-3. **Deploy**. Check `https://latchway.app/.well-known/assetlinks.json`
-   shows the fingerprint.
+2. Put the fingerprint(s), comma-separated in the `AA:BB:…` form, into
+   `ASSETLINKS_FINGERPRINTS` in `relay/wrangler.toml` and push. Certificate
+   fingerprints are public information; committing them is fine.
+3. Check `https://latchway.app/.well-known/assetlinks.json` shows the
+   fingerprint.
 
 Without this, links still work: Android shows the browser page with an
 **Open in Latchway** button.
