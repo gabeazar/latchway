@@ -42,7 +42,9 @@ web/                      static pages for latchway.app (also embedded in the Go
 internal/wire             keys, proofs, envelopes, padded meta, chunk frames (Go)
 internal/rendezvous       WebSocket client for hosts and joiners (Go)
 internal/server           self-hostable rendezvous (Go)
-internal/peer             WebRTC session layer: only shared helpers exist so far
+internal/peer             WebRTC session layer: Host (host.go), Receive (joiner.go), e2e tests
+internal/cli              prompts, size formatting, status line for the two tools
+cmd/latchway-send         CLI sender; cmd/latchway-receive  CLI receiver; cmd/cli_test.go drives both
 cmd/latchway-rendezvous   server binary (optional Let's Encrypt)
 testdata/vectors.json     cross-implementation fixtures
 hack/local.sh             only for networks that block proxy.golang.org (see below)
@@ -58,28 +60,27 @@ GHCR image; an independent security review whose findings were all
 addressed (registration keys, STUN-only joiners, bound proofs, padded meta,
 per-IP caps, Origin checks, canonical ids, a cleanup race).
 
-**Not written:** the transfer sessions (`internal/peer` host and joiner),
-the `latchway-send` / `latchway-receive` CLIs, the Android app, and the
-browser receiver. `docs/ROADMAP.md` Milestone 1 is the next thing to build,
-with acceptance criteria. `internal/peer/peer.go` already has the pion
-setup (SCTP max message size raised to 256 KiB), ICE candidate conversion
-and an event-plumbing pattern to build on.
+Also done (Milestone 1, 2026-10-04): `internal/peer` host and joiner
+sessions on pion, the `latchway-send` / `latchway-receive` CLIs, and the
+end-to-end tests (1 GiB with matching SHA-256 through the Go server and
+through the Worker, `bad_auth` on a wrong password, `host_gone` on revoke,
+`denied`, download limits). Measured on one laptop over loopback: about
+50 MiB/s in-process, 39 MiB/s between the two CLIs.
 
-**Nothing is deployed yet** (as of 2026-10-04). From a machine with
-Cloudflare access the quickest route is direct:
+**Not written:** the Android app (Milestone 2) and the browser receiver
+(Milestone 3). Both mirror `internal/peer`; `docs/ROADMAP.md` has the
+design.
 
-```sh
-cd relay && npm install && npx wrangler login && npx wrangler deploy
-```
-
-That creates the Worker, the Durable Object and the `latchway.app` custom
-domains (the zone is in the same account). Then create a TURN key
-(dashboard → Realtime → TURN, or `POST /accounts/{id}/calls/turn_keys`) and
-store it: `npx wrangler secret put TURN_KEY_ID`, `npx wrangler secret put
-TURN_KEY_API_TOKEN`. Verify with `curl https://latchway.app/healthz` and
-`RELAY_URL=https://latchway.app node --test relay/test/*.test.mjs`.
-`deploy-relay.yml` is the equivalent for CI once `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID` exist as repository secrets.
+**Deployed** (2026-10-04): the Worker is live at `https://latchway.app`
+(and `www`), deployed with `npx wrangler deploy` from a logged-in laptop;
+the behaviour suite passes against it. **TURN is not yet configured**: the
+wrangler OAuth token has no Calls/Realtime scope, so the TURN key must be
+created in the dashboard (Realtime → TURN → Create, name it `latchway`) and
+stored with `npx wrangler secret put TURN_KEY_ID` and `npx wrangler secret
+put TURN_KEY_API_TOKEN` from `relay/`, or via `deploy-relay.yml` with
+"Set up TURN" once `CLOUDFLARE_API_TOKEN` (needs Realtime: Edit) and
+`CLOUDFLARE_ACCOUNT_ID` exist as repository secrets. Until then transfers
+that cannot be punched through both NATs fail instead of relaying.
 
 Later: a Play Console account, and the Play signing certificate
 fingerprint for `ASSETLINKS_FINGERPRINTS` in `relay/wrangler.toml`.
@@ -87,7 +88,13 @@ fingerprint for `ASSETLINKS_FINGERPRINTS` in `relay/wrangler.toml`.
 ## Build and test
 
 ```sh
-go build ./... && go vet ./... && go test -race ./...
+go build ./... && go vet ./... && go test -race -short ./...
+
+# the two 1 GiB acceptance transfers (LATCHWAY_E2E_SIZE=<bytes> to shrink)
+go test -run 'TestLargeFile|TestCLIRoundTrip' ./internal/peer ./cmd
+
+# the transfer suite through another rendezvous (Worker, or the live site)
+RELAY_URL=http://127.0.0.1:8788 go test ./internal/peer
 
 # behaviour suite against the Go server
 go run ./cmd/latchway-rendezvous --listen 127.0.0.1:8787 &
@@ -136,6 +143,21 @@ machine ignore it entirely.
 - Node's test runner wants file globs (`node --test test/*.test.mjs`), not a
   directory.
 - `web/.assetsignore` keeps `embed.go` out of the Worker's static assets.
+- **pion excludes loopback candidates** by default (as libwebrtc does).
+  The e2e tests set `LATCHWAY_ICE_LOOPBACK=1`, which `newAPI()` honours,
+  so they pass on a machine with no network. The test rendezvous hands
+  out an empty ICE list so no STUN round trip happens either.
+- **Once the data channel is open, ignore the rendezvous.** A joiner's
+  socket is capped at 30 min; a long transfer outlives it and the host
+  receives `leave` mid-stream. Both sessions only act on signaling-socket
+  events before `dc.OnOpen` (PROTOCOL.md §4.4).
+- **`done` can be lost to the joiner's own close.** The joiner waits up to
+  5 s for the host to close after sending `done` (spec says SHOULD).
+- `go get x/term@latest` bumps the `go` directive to a toolchain CI does
+  not have. Keep `golang.org/x/term v0.32.0` and `x/sys v0.33.0`, which
+  match Go 1.24; `GOTOOLCHAIN=local` makes such mistakes fail loudly.
+- `-race` needs cgo; on a Windows laptop without gcc run the tests without
+  it and let CI (Linux) do the race run.
 - Durable Objects on the Workers Free plan must be SQLite-backed
   (`new_sqlite_classes`); the DO's in-memory state is lost on hibernation,
   so per-socket state lives in `serializeAttachment` and tags.

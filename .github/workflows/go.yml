@@ -55,10 +55,17 @@ jobs:
       - name: Vet
         run: go vet ./... 2>&1 | tee vet.log
 
-      - name: Unit tests
+      - name: Unit and loopback transfer tests
         run: |
           set -o pipefail
-          go test -race -count=1 ./... 2>&1 | tee test.log
+          go test -race -short -count=1 ./... 2>&1 | tee test.log
+
+      # The 1 GiB acceptance transfers (ROADMAP Milestone 1), without the
+      # race detector so they finish in reasonable time.
+      - name: Large transfers through the Go rendezvous
+        run: |
+          set -o pipefail
+          go test -count=1 -v -run 'TestLargeFile|TestCLIRoundTrip' ./internal/peer ./cmd 2>&1 | tee large.log
 
       - name: Behaviour tests against the Go rendezvous
         run: |
@@ -72,7 +79,7 @@ jobs:
         uses: ./.github/actions/report-log
         with:
           title: go checks failed
-          files: build.log vet.log test.log behaviour.log rz.log
+          files: build.log vet.log test.log large.log behaviour.log rz.log
 
   image:
     name: Publish rendezvous image

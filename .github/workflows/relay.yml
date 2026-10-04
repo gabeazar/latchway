@@ -5,12 +5,14 @@ on:
     paths:
       - "relay/**"
       - "web/**"
+      - "internal/peer/**"
       - ".github/workflows/relay.yml"
       - ".github/actions/**"
   pull_request:
     paths:
       - "relay/**"
       - "web/**"
+      - "internal/peer/**"
       - ".github/workflows/relay.yml"
   workflow_dispatch:
 
@@ -54,10 +56,26 @@ jobs:
           set -o pipefail
           npm test 2>&1 | tee test.log
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Real transfers (host and joiner on pion) signalled through the
+      # Worker, including the 1 GiB acceptance file. Same suite as the Go
+      # server gets in go.yml.
+      - name: Transfer tests through the Worker
+        working-directory: .
+        env:
+          RELAY_URL: http://127.0.0.1:8787
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./internal/peer 2>&1 | tee relay/transfer.log
+
       - name: Report failure
         if: failure()
         uses: ./.github/actions/report-log
         with:
           title: relay tests failed
-          files: relay/test.log relay/wrangler.log
+          files: relay/test.log relay/transfer.log relay/wrangler.log
           lines: "400"

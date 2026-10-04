@@ -3,20 +3,29 @@
 What exists, what's next, and how the next pieces are meant to fit. Status
 of the existing pieces is in the README.
 
-## Milestone 1: transfer sessions (Go)
+## Milestone 1: transfer sessions (Go) — done
 
-`internal/peer`: the host side (serves a share: hello, proof check,
-padded meta, approval, answer, chunk streaming with flow control, download
-counting) and the joiner side (joins a link: proof, meta, offer, chunk
-verification, progress, done), exactly as PROTOCOL.md §4 describes, on
-pion/webrtc. Then `cmd/latchway-send` and `cmd/latchway-receive` as thin
-CLIs around them, and an end-to-end test that runs both against
-`internal/server` over loopback and compares file hashes. The Worker gets
-the same test under `wrangler dev` in CI.
+`internal/peer`: the host side (`Host`: serves a share: hello, proof check
+with the online-guessing throttle, padded meta, approval, admission,
+answer, chunk streaming with flow control, download counting, rendezvous
+reconnection) and the joiner side (`Receive`: joins a link: proof, meta,
+offer, chunk verification, progress, done), exactly as PROTOCOL.md §4
+describes, on pion/webrtc. `cmd/latchway-send` and `cmd/latchway-receive`
+are thin CLIs around them, sharing `internal/cli` for prompts and the
+status line.
 
-Acceptance: a 1 GB file crosses between the two CLIs through either
-rendezvous with matching SHA-256, a wrong password yields `bad_auth`, a
-revoked share yields `host_gone`, and the vectors in `testdata/` pass.
+Tests: `internal/peer/e2e_test.go` runs real sessions through a rendezvous
+over loopback (the in-process Go server, or whatever `RELAY_URL` names) and
+covers small, empty and chunk-aligned files, a wrong password (`bad_auth`),
+a wrong secret, revocation mid-approval (`host_gone`), `denied`, and the
+download limit. `TestLargeFile` and `cmd/cli_test.go` (the two built
+binaries, 1 GiB by default, `LATCHWAY_E2E_SIZE` to change) run without
+`-short`. CI runs both against the Go server, and the peer suite against
+the Worker under `wrangler dev`.
+
+Acceptance met: a 1 GiB file crosses between the two CLIs with matching
+SHA-256, a wrong password yields `bad_auth`, a revoked share yields
+`host_gone`, and the vectors in `testdata/` pass.
 
 ## Milestone 2: Android app
 

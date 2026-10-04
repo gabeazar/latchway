@@ -326,7 +326,14 @@ plaintext length equals `size`.
 
 Flow control: the host waits while `bufferedAmount` exceeds 1 MiB and
 resumes below 256 KiB. The host counts a download as completed only on
-`done`, then closes the peer connection.
+`done`, then closes the peer connection. The joiner SHOULD wait for that
+close (up to 5 s) before closing its own side, so that `done` is not lost
+to its own teardown.
+
+Once the data channel is open, neither side depends on the rendezvous any
+more: a `leave`, `timeout` or `host_gone` on the signaling socket during a
+transfer carries no meaning and MUST NOT abort it (a long transfer can
+outlive the joiner's 30-minute socket lifetime, §3.4).
 
 ## 5. Error codes
 

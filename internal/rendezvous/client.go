@@ -105,9 +105,21 @@ func DialHost(ctx context.Context, base *url.URL, shareID string, regKey []byte,
 }
 
 // DialJoiner connects to a share and returns the joined message (sid, ICE).
+// A refused upgrade (PROTOCOL.md §3.2) is reported as a *ServerError:
+// "not_found" when no host is registered, "busy" when the joiner caps are
+// reached.
 func DialJoiner(ctx context.Context, base *url.URL, shareID string) (*Conn, wire.Msg, error) {
 	c, err := dial(ctx, wsURL(base, "/v1/join/"+shareID, nil), nil)
 	if err != nil {
+		var se *statusError
+		if errors.As(err, &se) {
+			switch se.code {
+			case http.StatusNotFound:
+				return nil, wire.Msg{}, &ServerError{Code: wire.ErrNotFound}
+			case http.StatusTooManyRequests:
+				return nil, wire.Msg{}, &ServerError{Code: wire.ErrBusy}
+			}
+		}
 		return nil, wire.Msg{}, err
 	}
 	first, err := c.Recv(ctx)
@@ -122,11 +134,19 @@ func DialJoiner(ctx context.Context, base *url.URL, shareID string) (*Conn, wire
 	return c, first, nil
 }
 
+// statusError records the HTTP status of a refused upgrade.
+type statusError struct{ code int }
+
+func (e *statusError) Error() string { return fmt.Sprintf("rendezvous refused the connection (HTTP %d)", e.code) }
+
 func dial(ctx context.Context, u string, h http.Header) (*Conn, error) {
 	dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(dctx, u, &websocket.DialOptions{HTTPHeader: h})
+	ws, resp, err := websocket.Dial(dctx, u, &websocket.DialOptions{HTTPHeader: h})
 	if err != nil {
+		if resp != nil && resp.StatusCode != http.StatusSwitchingProtocols {
+			return nil, &statusError{code: resp.StatusCode}
+		}
 		return nil, fmt.Errorf("connect to rendezvous: %w", err)
 	}
 	ws.SetReadLimit(readLimit)

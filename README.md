@@ -65,13 +65,16 @@ This repository is being built in the open. Current state:
 | Rendezvous server, self-hostable Go binary (`cmd/latchway-rendezvous`) | Complete, tested |
 | Key schedule, proofs, envelopes, chunk framing in Go (`internal/wire`) | Complete, tested, with cross-implementation vectors |
 | Web pages for `latchway.app` (`web/`) | Complete |
-| Transfer sessions: sender and receiver over WebRTC (`internal/peer`) | **Not yet written**; `internal/peer/peer.go` holds the shared setup helpers |
-| Desktop command-line sender/receiver (`cmd/latchway-send`, `cmd/latchway-receive`) | Waiting on the above |
-| Android app (`android/`) | Waiting on the above |
+| Transfer sessions: sender and receiver over WebRTC (`internal/peer`) | Complete, tested end to end over loopback (1 GiB, wrong password, revocation) |
+| Desktop command-line sender/receiver (`cmd/latchway-send`, `cmd/latchway-receive`) | Complete |
+| Public rendezvous at `latchway.app` | Live |
+| Android app (`android/`) | **Next** (`docs/ROADMAP.md` Milestone 2) |
+| Receiving in the browser | Designed (`docs/ROADMAP.md` Milestone 3) |
 
-The order of work from here is in [`docs/ROADMAP.md`](docs/ROADMAP.md). The missing piece is specified in detail in PROTOCOL.md §4, and the
-`wire` package plus [`testdata/vectors.json`](testdata/vectors.json)
-give any implementation a tested foundation to build on. Contributions are
+The order of work from here is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The `wire` and `peer` packages plus
+[`testdata/vectors.json`](testdata/vectors.json) give the Android and
+browser implementations a tested reference to match. Contributions are
 welcome; see the contributing notes below.
 
 ## Repository layout
@@ -85,12 +88,34 @@ web/                     static pages served at latchway.app
 internal/wire            keys, proofs, encrypted envelopes, chunk frames (Go)
 internal/rendezvous      WebSocket client for the rendezvous protocol (Go)
 internal/server          self-hostable rendezvous server (Go)
-internal/peer            WebRTC session layer (Go; in progress)
+internal/peer            WebRTC session layer: Host and Receive (Go)
+internal/cli             prompts and status line shared by the two tools
+cmd/latchway-send        command-line sender
+cmd/latchway-receive     command-line receiver
 cmd/latchway-rendezvous  rendezvous server binary
 testdata/vectors.json    fixtures every implementation must reproduce
 ```
 
-## Running the pieces that exist
+## Sending a file from the command line
+
+```sh
+go install github.com/gabeazar/latchway/cmd/latchway-send@latest
+go install github.com/gabeazar/latchway/cmd/latchway-receive@latest
+
+latchway-send holiday.mp4
+# prints https://latchway.app/s/<id>#<secret> and waits for one download
+
+latchway-receive 'https://latchway.app/s/<id>#<secret>'
+# saves holiday.mp4 in the current directory
+```
+
+`latchway-send --password` protects the link with a password that the
+receiver is asked for, `--approve` asks you before each download,
+`--downloads 3` and `--expire 2h` limit the share, `--relay-only` hides
+your address from the other side, and `--rendezvous` points both tools at
+your own server. Quote the link: the `#` means something to most shells.
+
+## Running the pieces
 
 Rendezvous server, locally:
 
@@ -106,11 +131,13 @@ implementation):
 RELAY_URL=http://127.0.0.1:8787 node --test relay/test/*.test.mjs
 ```
 
-Go unit tests, including the RFC 5869 HKDF vectors and the
-cross-implementation fixtures:
+Go tests, including the RFC 5869 HKDF vectors, the cross-implementation
+fixtures and real transfers over loopback (`-short` skips the two 1 GiB
+ones):
 
 ```sh
-go test ./...
+go test -short ./...
+go test -run 'TestLargeFile|TestCLIRoundTrip' ./internal/peer ./cmd
 ```
 
 Cloudflare Worker, locally (needs `npm install` in `relay/`):

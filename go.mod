@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
 	github.com/pion/dtls/v3 v3.0.4 // indirect
-	github.com/pion/ice/v4 v4.0.8 // indirect
+	github.com/pion/ice/v4 v4.0.8
 	github.com/pion/interceptor v0.1.37 // indirect
 	github.com/pion/logging v0.2.3 // indirect
 	github.com/pion/mdns/v2 v2.0.7 // indirect
@@ -29,4 +29,5 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/term v0.32.0
 )
