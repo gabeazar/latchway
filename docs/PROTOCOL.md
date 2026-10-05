@@ -172,8 +172,10 @@ Otherwise the upgrade succeeds and:
 "credential":…}`). The joiner's list contains **STUN servers only**: a
 joiner has proven nothing yet, and TURN credentials cost money. The host's
 list additionally contains short-lived TURN credentials when the server has
-them configured; the host passes them to the joiner inside the encrypted
-`go` message (§4.3), after the proof.
+them configured and its monthly TURN budget, if one is set, is not yet
+spent; the host passes them to the joiner inside the encrypted `go`
+message (§4.3), after the proof. Clients MUST cope with a host list that
+has no TURN entry: the transfer then succeeds only over a direct path.
 
 Servers SHOULD require the WebSocket `Origin` header, when present, to match
 their own origin, so that web pages cannot make visitors' browsers join

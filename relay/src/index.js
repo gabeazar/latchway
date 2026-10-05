@@ -10,6 +10,8 @@
 
 import { DurableObject } from "cloudflare:workers";
 
+import { decide, parseBudgetGB, parseUsage, usageQuery } from "./budget.js";
+
 const SHARE_ID_RE = /^[A-Za-z0-9_-]{22}$/;
 const B64URL_RE = /^[A-Za-z0-9_-]+$/;
 const SID_BYTES = 12;
@@ -57,6 +59,12 @@ const SECURITY_HEADERS = {
 // ---------------------------------------------------------------------------
 
 export default {
+  // Cron trigger (wrangler.toml): refresh the month's TURN usage so the
+  // budget decision is always based on a recent reading.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(budgetStub(env).fetch("https://budget/refresh"));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -113,6 +121,11 @@ export default {
 
 function shareStub(env, shareId) {
   return env.SHARES.get(env.SHARES.idFromName(shareId));
+}
+
+// One budget object for the whole deployment.
+function budgetStub(env) {
+  return env.BUDGET.get(env.BUDGET.idFromName("budget"));
 }
 
 // Re-targets the request at a Durable Object path while keeping headers
@@ -536,7 +549,10 @@ export class ShareObject extends DurableObject {
     let ok = true;
     const keyId = this.env.TURN_KEY_ID;
     const token = this.env.TURN_KEY_API_TOKEN;
-    if (keyId && token) {
+    if (keyId && token && !(await this.turnAllowed())) {
+      // Over the monthly budget (or unable to tell): STUN only, so that
+      // transfers with a direct path still work and nothing is billed.
+    } else if (keyId && token) {
       ok = false;
       try {
         const res = await fetch(
@@ -567,6 +583,93 @@ export class ShareObject extends DurableObject {
     const extra = parseExtraIce(this.env.EXTRA_ICE_SERVERS);
     if (extra.length > 0) servers = servers.concat(extra);
     return { servers, ok };
+  }
+
+  // Asks the budget object whether TURN credentials may be issued. A
+  // failure to reach it counts as "no", like any other unknown.
+  async turnAllowed() {
+    try {
+      const res = await budgetStub(this.env).fetch("https://budget/allow");
+      const b = await res.json();
+      if (!b.allow) console.warn("turn withheld:", b.reason);
+      return b.allow === true;
+    } catch (e) {
+      console.warn("turn budget check failed", String(e));
+      return false;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Durable Object: the TURN budget (one instance per deployment)
+// ---------------------------------------------------------------------------
+//
+// Keeps the latest month-to-date TURN egress reading and answers "may TURN
+// be issued right now?". Readings come from the GraphQL analytics API on
+// the cron schedule, and on demand when a share asks and the reading is
+// missing or stale. With no TURN_BUDGET_GB there is nothing to enforce and
+// every answer is yes.
+
+const REFRESH_RETRY_MS = 5 * 60_000; // on-demand refresh backoff after a failure
+const READING_FRESH_MS = 60 * 60_000; // on-demand refresh when older than this
+
+export class BudgetObject extends DurableObject {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/allow") return json(await this.status(), 200);
+    if (url.pathname === "/refresh") return json(await this.refresh(), 200);
+    return text("not found", 404);
+  }
+
+  budgetBytes() {
+    return parseBudgetGB(this.env.TURN_BUDGET_GB);
+  }
+
+  async status() {
+    const budgetBytes = this.budgetBytes();
+    const now = Date.now();
+    let reading = (await this.ctx.storage.get("reading")) || null;
+    if (budgetBytes > 0 && (!reading || now - reading.at > READING_FRESH_MS)) {
+      const lastAttempt = (await this.ctx.storage.get("lastAttempt")) || 0;
+      if (now - lastAttempt > REFRESH_RETRY_MS) {
+        const r = await this.refresh();
+        if (r && typeof r.bytes === "number") reading = r;
+      }
+    }
+    const d = decide({ budgetBytes, reading, now });
+    return { allow: d.allow, reason: d.reason, bytes: reading ? reading.bytes : null, at: reading ? reading.at : null };
+  }
+
+  async refresh() {
+    const budgetBytes = this.budgetBytes();
+    if (budgetBytes <= 0) return { skipped: "no budget configured" };
+    const token = this.env.CF_ANALYTICS_TOKEN;
+    const account = this.env.CF_ACCOUNT_ID;
+    if (!token || !account) {
+      console.warn("turn budget: TURN_BUDGET_GB is set but CF_ANALYTICS_TOKEN or CF_ACCOUNT_ID is missing; TURN withheld");
+      return { skipped: "no analytics credentials" };
+    }
+    const now = Date.now();
+    await this.ctx.storage.put("lastAttempt", now);
+    const endpoint = this.env.CF_ANALYTICS_ENDPOINT || "https://api.cloudflare.com/client/v4/graphql";
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(usageQuery(account, now)),
+      });
+      const body = await res.json();
+      const bytes = parseUsage(body);
+      const reading = { bytes, at: now };
+      await this.ctx.storage.put("reading", reading);
+      if (bytes >= budgetBytes) {
+        console.warn(`turn budget reached: ${(bytes / 1e9).toFixed(1)} GB of ${(budgetBytes / 1e9).toFixed(0)} GB this month`);
+      }
+      return reading;
+    } catch (e) {
+      console.warn("turn usage refresh failed", String(e));
+      return { error: String(e) };
+    }
   }
 }
 

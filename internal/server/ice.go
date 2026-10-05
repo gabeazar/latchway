@@ -21,6 +21,8 @@ type ICEProvider struct {
 	Static       []wire.ICEServer
 	TTL          time.Duration
 	Cache        time.Duration
+	// Budget, when set, withholds TURN once the month's egress reaches it.
+	Budget *TURNBudget
 
 	mu       sync.Mutex
 	cached   []wire.ICEServer
@@ -38,7 +40,7 @@ func (p *ICEProvider) Servers(ctx context.Context) []wire.ICEServer {
 		return p.cached
 	}
 	servers := []wire.ICEServer{{URLs: []string{"stun:stun.cloudflare.com:3478"}}}
-	if p.TurnKeyID != "" && p.TurnAPIToken != "" {
+	if p.TurnKeyID != "" && p.TurnAPIToken != "" && p.Budget.Allow(ctx) {
 		if turn := p.fetchTURN(ctx); len(turn) > 0 {
 			servers = turn
 		}

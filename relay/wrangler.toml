@@ -37,9 +37,22 @@ not_found_handling = "none"
 name = "SHARES"
 class_name = "ShareObject"
 
+# One instance for the whole deployment: the month's TURN usage reading.
+[[durable_objects.bindings]]
+name = "BUDGET"
+class_name = "BudgetObject"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ShareObject"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["BudgetObject"]
+
+# Refresh the TURN usage reading twice an hour.
+[triggers]
+crons = ["*/30 * * * *"]
 
 [observability]
 enabled = true
@@ -56,3 +69,11 @@ ASSETLINKS_FINGERPRINTS = ""
 ANDROID_PACKAGE = "app.latchway"
 # Optional JSON array of extra RTCIceServer objects (e.g. your own coturn).
 EXTRA_ICE_SERVERS = ""
+# TURN spend cap, in GB of egress per calendar month. Once this month's
+# usage (read from the GraphQL analytics API) reaches it, hosts get STUN
+# only until the month rolls over. Cloudflare's free allowance is 1,000 GB.
+# Needs the CF_ANALYTICS_TOKEN secret (an API token with Account Analytics:
+# Read) and CF_ACCOUNT_ID; with a budget but no token, TURN is withheld.
+# Empty disables the cap.
+TURN_BUDGET_GB = "900"
+CF_ACCOUNT_ID = "cff6b0fd072fba610aca00c93cf2726d"

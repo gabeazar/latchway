@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,11 +38,25 @@ func main() {
 	turnKey := flag.String("turn-key-id", os.Getenv("LATCHWAY_TURN_KEY_ID"), "Cloudflare TURN key id (optional)")
 	turnToken := flag.String("turn-api-token", os.Getenv("LATCHWAY_TURN_KEY_API_TOKEN"), "Cloudflare TURN key API token (optional)")
 	iceJSON := flag.String("ice-servers", os.Getenv("LATCHWAY_ICE_SERVERS"), "JSON array of extra ICE servers, e.g. your own TURN")
+	budgetGB := flag.Float64("turn-budget-gb", envFloat("LATCHWAY_TURN_BUDGET_GB"), "withhold Cloudflare TURN once this month's egress reaches this many GB (0: no cap)")
+	cfAccount := flag.String("cf-account-id", os.Getenv("LATCHWAY_CF_ACCOUNT_ID"), "Cloudflare account id, for the TURN usage query")
+	cfAnalytics := flag.String("cf-analytics-token", os.Getenv("LATCHWAY_CF_ANALYTICS_TOKEN"), "Cloudflare API token with Account Analytics: Read, for the TURN usage query")
 	pkg := flag.String("android-package", envOr("LATCHWAY_ANDROID_PACKAGE", "app.latchway"), "Android application id for assetlinks.json")
 	fps := flag.String("assetlinks", os.Getenv("LATCHWAY_ASSETLINKS_FINGERPRINTS"), "comma-separated SHA-256 signing fingerprints for App Links")
 	flag.Parse()
 
 	ice := &server.ICEProvider{TurnKeyID: *turnKey, TurnAPIToken: *turnToken}
+	if *budgetGB > 0 {
+		ice.Budget = &server.TURNBudget{
+			BudgetBytes: int64(*budgetGB * server.GB),
+			AccountID:   *cfAccount,
+			Token:       *cfAnalytics,
+			Logf:        log.Printf,
+		}
+		if *cfAccount == "" || *cfAnalytics == "" {
+			log.Printf("warning: --turn-budget-gb is set without --cf-account-id and --cf-analytics-token; TURN will be withheld")
+		}
+	}
 	if *iceJSON != "" {
 		var extra []wire.ICEServer
 		if err := json.Unmarshal([]byte(*iceJSON), &extra); err != nil {
@@ -130,6 +145,14 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envFloat(key string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(key)), 64)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func init() {

@@ -105,6 +105,31 @@ authenticated senders and refreshes them hourly. Monitor usage under
 Realtime → TURN → Analytics; the first 1,000 GB each month are free, then
 $0.05/GB.
 
+### 3b. Cap what TURN can cost
+
+`TURN_BUDGET_GB` in `relay/wrangler.toml` (900 by default) is a monthly
+egress cap. Twice an hour, and whenever a share needs a fresh answer, the
+Worker sums the month's TURN egress through Cloudflare's GraphQL
+analytics API. Once the sum reaches the cap, senders get STUN only until
+the first of the next month: transfers that can find a direct path keep
+working, the paid relay is simply withheld, and nothing is billed. The
+reading is trusted for 48 hours; if the analytics query keeps failing
+longer than that, TURN is withheld too, so a broken token fails safe.
+
+It needs one more secret, an API token that can read analytics:
+
+1. Dashboard → profile → **My Profile** → **API Tokens** → **Create Token**
+   → **Create Custom Token**. Permission: **Account** → **Account
+   Analytics** → **Read**, scoped to your account. Nothing else.
+2. From `relay/`: `npx wrangler secret put CF_ANALYTICS_TOKEN`, paste it.
+3. Check `CF_ACCOUNT_ID` in `relay/wrangler.toml` is your account id, and
+   deploy.
+
+With a budget set but no token, TURN is withheld rather than risk an
+unseen overrun; the Worker logs say so. Set `TURN_BUDGET_GB = ""` to turn
+the cap off. For a warning before the cap is reached, add a Cloudflare
+notification (Notifications → **Add** → *Usage Based Billing*).
+
 ### 4. Make https links open the app directly (App Links)
 
 Android opens `https://latchway.app/s/…` links straight in the app only if
@@ -172,8 +197,10 @@ Your proxy must forward WebSocket upgrades for `/v1/*`.
 ### TURN for self-hosters
 
 Either reuse Cloudflare's TURN service with the same two environment
-variables (`LATCHWAY_TURN_KEY_ID`, `LATCHWAY_TURN_KEY_API_TOKEN`), or run
-[coturn](https://github.com/coturn/coturn) and pass it in:
+variables (`LATCHWAY_TURN_KEY_ID`, `LATCHWAY_TURN_KEY_API_TOKEN`), plus
+the same spend cap as the Worker (`LATCHWAY_TURN_BUDGET_GB`,
+`LATCHWAY_CF_ACCOUNT_ID`, `LATCHWAY_CF_ANALYTICS_TOKEN`; see §3b above),
+or run [coturn](https://github.com/coturn/coturn) and pass it in:
 
 ```sh
 -e LATCHWAY_ICE_SERVERS='[{"urls":["turn:turn.example.org:3478"],"username":"u","credential":"p"}]'

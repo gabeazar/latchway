@@ -81,14 +81,18 @@ design.
 
 **Deployed** (2026-10-04): the Worker is live at `https://latchway.app`
 (and `www`), deployed with `npx wrangler deploy` from a logged-in laptop;
-the behaviour suite passes against it. **TURN is not yet configured**: the
-wrangler OAuth token has no Calls/Realtime scope, so the TURN key must be
-created in the dashboard (Realtime → TURN → Create, name it `latchway`) and
-stored with `npx wrangler secret put TURN_KEY_ID` and `npx wrangler secret
-put TURN_KEY_API_TOKEN` from `relay/`, or via `deploy-relay.yml` with
-"Set up TURN" once `CLOUDFLARE_API_TOKEN` (needs Realtime: Edit) and
-`CLOUDFLARE_ACCOUNT_ID` exist as repository secrets. Until then transfers
-that cannot be punched through both NATs fail instead of relaying.
+the behaviour suite passes against it. **TURN is configured** (2026-10-05):
+the Realtime subscription was added to the account, the TURN key
+`latchway` exists, and `TURN_KEY_ID` / `TURN_KEY_API_TOKEN` are Worker
+secrets; hosts receive TURN credentials in `join`. The wrangler OAuth token
+cannot manage TURN keys (no Realtime scope), so anything else TURN-related
+goes through the dashboard.
+
+**TURN spend cap**: `TURN_BUDGET_GB` (900) withholds TURN once the month's
+egress reaches it (`relay/src/budget.js`, `internal/server/budget.go`,
+docs/HOSTING.md §3b). It needs the `CF_ANALYTICS_TOKEN` secret (API token,
+Account Analytics: Read). With the budget set and no token, TURN is
+withheld on purpose. Gabe wants never to exceed the free 1,000 GB.
 
 Later: a Play Console account, and the Play signing certificate
 fingerprint for `ASSETLINKS_FINGERPRINTS` in `relay/wrangler.toml`.
