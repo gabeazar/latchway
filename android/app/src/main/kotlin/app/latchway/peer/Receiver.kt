@@ -107,7 +107,7 @@ object Receiver {
         }
         var password = if (pw) opts.password else ""
         if (pw && password.isEmpty()) {
-            password = opts.askPassword?.invoke() ?: throw SessionException(Wire.ERR_BAD_AUTH)
+            password = opts.askPassword?.invoke() ?: throw SessionException(Wire.ERR_CLOSED, "No password entered.")
         }
         val keys = withContext(Dispatchers.Default) { KeySchedule.derive(opts.share.id, opts.share.secret, password) }
 

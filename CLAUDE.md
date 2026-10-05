@@ -75,16 +75,36 @@ through the Worker, `bad_auth` on a wrong password, `host_gone` on revoke,
 `denied`, download limits). Measured on one laptop over loopback: about
 50 MiB/s in-process, 39 MiB/s between the two CLIs.
 
-**Android app (Milestone 2)**: first cut in `android/` (2026-10-05),
-builds green in `android.yml`, which uploads the debug APK as an
-artifact; `android/README.md` explains the structure. `android/core` is
-pure JVM and passes the vectors. Signed with the committed
-`android/debug.keystore` (public by design) so builds install over each
-other and App Links verify for sideloads. Not yet run on a device: that
-is the next step, phone-to-phone and phone-to-CLI. The laptop has no
-Android SDK (ask Gabe before accepting the SDK license); a portable JDK
-17 lives under `%LOCALAPPDATA%\Programs`. **Browser receiver (Milestone
-3)** is not written; `docs/ROADMAP.md` has the design.
+**Android app (Milestone 2)**: in `android/` (2026-10-05), builds green
+in `android.yml`, which uploads debug and release APKs (per-ABI plus
+universal) as artifacts; `android/README.md` explains the structure.
+`android/core` is pure JVM and passes the vectors. Signed with the
+committed `android/debug.keystore` (public by design) so builds install
+over each other and App Links verify for sideloads. **Verified on an
+Android 16 emulator against the live rendezvous**: app → CLI (3 MB,
+hash match), CLI → app via App Link cold start (5 MB and a 60 MB
+password-protected file with the screen locked mid-transfer, hash match),
+wrong password → `bad_auth`, two files → one zip → CLI → unzipped hashes
+match. Not yet tested on real phones or phone-to-phone. **Browser
+receiver (Milestone 3)** is not written; `docs/ROADMAP.md` has the design.
+
+**Local Android toolchain** (this laptop): JDK 17 at
+`%LOCALAPPDATA%\Programs\jdk-17.0.20.1+1` (set `JAVA_HOME`), SDK at
+`%LOCALAPPDATA%\Android\Sdk` (`android/local.properties` points there;
+platform 36, build-tools 36, emulator, `system-images;android-36;google_apis;x86_64`),
+AVD `latchway` (Pixel 7). `./gradlew :app:assembleDebug` takes ~1 min warm.
+Emulator: `emulator -avd latchway -no-window -no-audio -gpu swiftshader_indirect`,
+boots in ~1 min; `adb exec-out screencap -p > shot.png` for screenshots,
+`adb shell uiautomator dump` to read Compose text (that is how the link
+is extracted from the share screen). Pitfalls: in Git Bash set
+`MSYS_NO_PATHCONV=1` for adb (else `/sdcard/...` becomes a Windows path)
+and pass *local* files as `C:\...` paths; files pushed with adb are not
+visible to the document picker until indexed, so stage test files via
+`/data/local/tmp` + `run-as app.latchway cp` and the share-sheet intent
+(`am start -a android.intent.action.SEND --eu android.intent.extra.STREAM file:///data/user/0/app.latchway/files/x`),
+or receive once through the app so they land in Downloads indexed.
+Compose dialogs shift up when the keyboard opens: find buttons by
+`uiautomator dump` bounds, not by eye.
 
 **Deployed** (2026-10-04): the Worker is live at `https://latchway.app`
 (and `www`), deployed with `npx wrangler deploy` from a logged-in laptop;

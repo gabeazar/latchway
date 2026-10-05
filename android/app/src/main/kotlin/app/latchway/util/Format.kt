@@ -6,7 +6,7 @@ object Format {
     fun bytes(n: Long): String {
         if (n < 0) return "unknown size"
         if (n < 1024) return "$n B"
-        var v = n.toDouble()
+        var v = n / 1024.0
         var unit = 0
         val units = arrayOf("KiB", "MiB", "GiB", "TiB")
         while (v >= 1024 && unit < units.size - 1) {

@@ -62,15 +62,16 @@ fun ReceiveScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     LaunchedEffect(PendingLink.link) {
-        PendingLink.link?.let { link ->
-            PendingLink.link = null
-            val s = LatchwayApp.instance.settings.current()
-            val id = ReceiveManager.start(link, relayOnly = s.relayOnly)
-            if (id == null) {
-                linkText = link
-                badLink = true
-            } else currentId = id
-        }
+        val link = PendingLink.link ?: return@LaunchedEffect
+        // Read settings before touching the key: changing it restarts this
+        // effect and would cancel the read.
+        val s = LatchwayApp.instance.settings.current()
+        val id = ReceiveManager.start(link, relayOnly = s.relayOnly)
+        if (id == null) {
+            linkText = link
+            badLink = true
+        } else currentId = id
+        PendingLink.link = null
     }
     val r = receives.firstOrNull { it.id == currentId } ?: receives.firstOrNull { with(ReceiveManager) { it.phase.isActive() } }
 
