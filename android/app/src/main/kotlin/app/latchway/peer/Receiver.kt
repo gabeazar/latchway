@@ -101,10 +101,10 @@ object Receiver {
         val hello = next(HANDSHAKE_TIMEOUT_MS)
         if (hello.t == Wire.T_ERROR) throw SessionException(hello.code ?: Wire.ERR_PROTOCOL)
         val hostNonce = hello.n?.let { B64.decode(it) }
-        if (hello.t != Wire.T_HELLO || hello.v != Protocol.VERSION || hello.pw == null || hostNonce == null || hostNonce.size != Protocol.NONCE_LEN) {
+        val pw = hello.pw
+        if (hello.t != Wire.T_HELLO || hello.v != Protocol.VERSION || pw == null || hostNonce == null || hostNonce.size != Protocol.NONCE_LEN) {
             throw SessionException(Wire.ERR_PROTOCOL)
         }
-        val pw = hello.pw
         var password = if (pw) opts.password else ""
         if (pw && password.isEmpty()) {
             password = opts.askPassword?.invoke() ?: throw SessionException(Wire.ERR_BAD_AUTH)
@@ -138,10 +138,12 @@ object Receiver {
         // 4. meta.
         val meta = nextEnc(HANDSHAKE_TIMEOUT_MS)
         if (meta.t == Wire.T_ERROR) throw SessionException(meta.code ?: Wire.ERR_PROTOCOL)
-        if (meta.t != Wire.T_META || meta.chunk != Protocol.CHUNK_SIZE || meta.size == null || meta.name.isNullOrEmpty()) {
+        val metaName = meta.name
+        val metaSize = meta.size
+        if (meta.t != Wire.T_META || meta.chunk != Protocol.CHUNK_SIZE || metaSize == null || metaName.isNullOrEmpty()) {
             throw SessionException(Wire.ERR_PROTOCOL)
         }
-        val fileMeta = FileMeta(meta.name, meta.size, meta.mime ?: "application/octet-stream", meta.from)
+        val fileMeta = FileMeta(metaName, metaSize, meta.mime ?: "application/octet-stream", meta.from)
         val approval = meta.approval == true
         val out = opts.accept(fileMeta, approval) ?: run {
             enc(Msg(t = Wire.T_ERROR, code = Wire.ERR_CLOSED))
