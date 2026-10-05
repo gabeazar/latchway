@@ -50,10 +50,23 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon :app:lintDebug 2>&1 | tee lint.log
 
+      # Shrunk with R8 and signed with the committed debug key: what
+      # sideloaders get until Play builds exist.
+      - name: Build release APKs
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon :app:assembleRelease 2>&1 | tee release.log
+
       - uses: actions/upload-artifact@v4
         with:
           name: latchway-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latchway-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Report failure
@@ -61,5 +74,5 @@ jobs:
         uses: ./.github/actions/report-log
         with:
           title: android build failed
-          files: android/core.log android/build.log android/lint.log
+          files: android/core.log android/build.log android/lint.log android/release.log
           lines: "300"
