@@ -93,6 +93,7 @@ object ReceiveManager {
             } catch (e: CancellationException) {
                 update(id) { it.copy(phase = ReceivePhase.CANCELLED) }
             } catch (e: Throwable) {
+                android.util.Log.w("Latchway", "receive failed: ${e::class.simpleName}: ${e.message}")
                 update(id) { it.copy(phase = ReceivePhase.FAILED, error = explain(e)) }
             } finally {
                 jobs.remove(id)

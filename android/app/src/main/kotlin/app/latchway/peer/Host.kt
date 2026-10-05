@@ -326,6 +326,8 @@ internal class HostSession(
         } catch (e: JoinerGone) {
             host.fire(Event.Left(sid))
         } catch (e: Throwable) {
+            // Codes and messages only; never the link or keys.
+            android.util.Log.w("Latchway", "host session failed: ${e::class.simpleName}: ${e.message}")
             host.fire(Event.Failed(sid, e))
         }
     }
@@ -467,7 +469,14 @@ internal class HostSession(
                                         throw e
                                     }
                                     streamJob = async(Dispatchers.IO) {
-                                        input.use { stream(peer, ChunkSealer(sk.file), it, sent) }
+                                        try {
+                                            input.use { stream(peer, ChunkSealer(sk.file), it, sent) }
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Throwable) {
+                                            peer.sendText(Msg(t = Wire.T_ABORT, reason = "read error"))
+                                            throw e
+                                        }
                                     }
                                 }
                                 PeerEvent.ChannelClosed -> if (!completed) throw SessionException(Wire.ERR_PROTOCOL, "channel closed")

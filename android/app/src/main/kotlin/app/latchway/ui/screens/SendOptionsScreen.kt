@@ -64,6 +64,7 @@ fun SendOptionsScreen(uris: List<Uri>, onBack: () -> Unit, onStarted: (String) -
     var from by remember { mutableStateOf("") }
     var rendezvous by remember { mutableStateOf("latchway.app") }
     var loaded by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(uris) {
         val s = settingsRepo.current()
@@ -73,17 +74,26 @@ fun SendOptionsScreen(uris: List<Uri>, onBack: () -> Unit, onStarted: (String) -
         relayOnly = s.relayOnly
         from = s.displayName
         rendezvous = s.rendezvous
-        files = withContext(Dispatchers.IO) {
-            uris.map { uri ->
-                var name = uri.lastPathSegment ?: "file"
-                var size = -1L
-                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
-                    if (c.moveToFirst()) {
-                        c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { i -> c.getString(i)?.let { name = it } }
-                        c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let { i -> if (!c.isNull(i)) size = c.getLong(i) }
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                uris.map { uri ->
+                    var name = uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+                    var size = -1L
+                    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+                        if (c.moveToFirst()) {
+                            c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { i -> c.getString(i)?.let { name = it } }
+                            c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let { i -> if (!c.isNull(i)) size = c.getLong(i) }
+                        }
                     }
+                    if (size < 0) context.contentResolver.openFileDescriptor(uri, "r")?.use { size = it.statSize }
+                    Picked(name, size)
                 }
-                Picked(name, size)
+            }
+        }
+        result.onSuccess { files = it }.onFailure { e ->
+            problem = when (e) {
+                is SecurityException -> "Latchway wasn't given access to this file. Pick it again from inside the app."
+                else -> "Can't read this file: ${e.message ?: e::class.simpleName}"
             }
         }
         loaded = true
@@ -107,6 +117,8 @@ fun SendOptionsScreen(uris: List<Uri>, onBack: () -> Unit, onStarted: (String) -
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (!loaded) {
                         Text("Reading…", style = MaterialTheme.typography.bodyMedium)
+                    } else if (problem != null) {
+                        Text(problem!!, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                     } else if (files.size == 1) {
                         Text(files[0].name, style = MaterialTheme.typography.titleMedium)
                         Text(Format.bytes(files[0].size), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -159,7 +171,7 @@ fun SendOptionsScreen(uris: List<Uri>, onBack: () -> Unit, onStarted: (String) -
                     )
                     onStarted(id)
                 },
-                enabled = loaded && files.isNotEmpty() && (!usePassword || password.isNotEmpty()),
+                enabled = loaded && problem == null && files.isNotEmpty() && (!usePassword || password.isNotEmpty()),
                 modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.medium,
             ) { Text("Create the link") }
             Text(
