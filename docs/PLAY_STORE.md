@@ -42,6 +42,7 @@ move device to device and never reach a server operated by the developer.
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC` | keep a share or download alive with the screen off | **Foreground service declaration**: type *dataSync*, purpose "transferring a user-selected file between devices while the app is in the background"; attach a short screen recording of a share running |
 | `POST_NOTIFICATIONS` | progress and approval prompts | none |
 | `ACCESS_NETWORK_STATE` | reconnect the rendezvous when the network changes | none |
+| `WAKE_LOCK` | keep the CPU and Wi-Fi awake while a transfer runs with the screen off | none (normal permission) |
 
 No storage permission: files come in via `ACTION_OPEN_DOCUMENT` /
 `ACTION_SEND` and go out via `ACTION_CREATE_DOCUMENT`. Do not add

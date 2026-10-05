@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- brand/README.md palette -->
+    <color name="paper">#F7F8F6</color>
+    <color name="paper_dark">#14202D</color>
+    <color name="ink">#1D2A3A</color>
+    <color name="brass">#B8862B</color>
+    <color name="icon_background">#1B2838</color>
+</resources>

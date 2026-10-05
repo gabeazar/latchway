@@ -1,0 +1,65 @@
+name: android
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "testdata/**"
+      - ".github/workflows/android.yml"
+      - ".github/actions/**"
+  pull_request:
+    paths:
+      - "android/**"
+      - "testdata/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Core tests (vectors, links, zip streaming)
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon :core:test 2>&1 | tee core.log
+
+      - name: Build debug APK
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon :app:assembleDebug 2>&1 | tee build.log
+
+      - name: Lint
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon :app:lintDebug 2>&1 | tee lint.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latchway-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Report failure
+        if: failure()
+        uses: ./.github/actions/report-log
+        with:
+          title: android build failed
+          files: android/core.log android/build.log android/lint.log
+          lines: "300"
