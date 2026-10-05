@@ -55,6 +55,17 @@ android {
         buildConfig = true
     }
 
+    // One APK per CPU type (the WebRTC library is ~15 MB each) plus a
+    // universal one. Phones are arm64; emulators are x86_64.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module")
     }
