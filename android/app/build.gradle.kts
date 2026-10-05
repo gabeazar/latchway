@@ -20,17 +20,27 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
+    signingConfigs {
+        // A committed key, so every CI build installs over the previous one
+        // and the fingerprint can be listed in assetlinks.json for App Links
+        // on sideloaded builds. It protects nothing; Play builds are signed
+        // by Play. See android/README.md.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "latchway-debug"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
             isDebuggable = true
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // CI signs with a throwaway key for sideload builds; Play uses
-            // its own signing. See android/README.md.
             signingConfig = signingConfigs.getByName("debug")
         }
     }

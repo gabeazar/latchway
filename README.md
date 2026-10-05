@@ -68,7 +68,7 @@ This repository is being built in the open. Current state:
 | Transfer sessions: sender and receiver over WebRTC (`internal/peer`) | Complete, tested end to end over loopback (1 GiB, wrong password, revocation) |
 | Desktop command-line sender/receiver (`cmd/latchway-send`, `cmd/latchway-receive`) | Complete |
 | Public rendezvous at `latchway.app` | Live |
-| Android app (`android/`) | **Next** (`docs/ROADMAP.md` Milestone 2) |
+| Android app (`android/`) | First cut builds in CI (debug APK artifact); on-device testing under way |
 | Receiving in the browser | Designed (`docs/ROADMAP.md` Milestone 3) |
 
 The order of work from here is in [`docs/ROADMAP.md`](docs/ROADMAP.md).

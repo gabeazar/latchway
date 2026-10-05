@@ -75,9 +75,16 @@ through the Worker, `bad_auth` on a wrong password, `host_gone` on revoke,
 `denied`, download limits). Measured on one laptop over loopback: about
 50 MiB/s in-process, 39 MiB/s between the two CLIs.
 
-**Not written:** the Android app (Milestone 2) and the browser receiver
-(Milestone 3). Both mirror `internal/peer`; `docs/ROADMAP.md` has the
-design.
+**Android app (Milestone 2)**: first cut in `android/` (2026-10-05),
+builds green in `android.yml`, which uploads the debug APK as an
+artifact; `android/README.md` explains the structure. `android/core` is
+pure JVM and passes the vectors. Signed with the committed
+`android/debug.keystore` (public by design) so builds install over each
+other and App Links verify for sideloads. Not yet run on a device: that
+is the next step, phone-to-phone and phone-to-CLI. The laptop has no
+Android SDK (ask Gabe before accepting the SDK license); a portable JDK
+17 lives under `%LOCALAPPDATA%\Programs`. **Browser receiver (Milestone
+3)** is not written; `docs/ROADMAP.md` has the design.
 
 **Deployed** (2026-10-04): the Worker is live at `https://latchway.app`
 (and `www`), deployed with `npx wrangler deploy` from a logged-in laptop;

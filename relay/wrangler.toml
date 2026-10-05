@@ -64,7 +64,9 @@ enabled = true
 # SHA-256 fingerprints of the Android signing certificates, comma-separated,
 # in the colon-separated upper-case form Android uses. Served at
 # /.well-known/assetlinks.json so https links open straight in the app.
-ASSETLINKS_FINGERPRINTS = ""
+# Currently the committed debug key (android/debug.keystore) used by CI
+# builds; the Play signing certificate is added when it exists.
+ASSETLINKS_FINGERPRINTS = "B6:F2:3D:99:13:41:0C:5C:DD:6A:3B:93:4C:A1:C6:DC:40:E0:58:4C:EC:3B:5F:5D:A2:9E:02:E4:AA:09:5C:72"
 # Android application id, must match android/app/build.gradle.kts.
 ANDROID_PACKAGE = "app.latchway"
 # Optional JSON array of extra RTCIceServer objects (e.g. your own coturn).

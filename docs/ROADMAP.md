@@ -27,16 +27,24 @@ Acceptance met: a 1 GiB file crosses between the two CLIs with matching
 SHA-256, a wrong password yields `bad_auth`, a revoked share yields
 `host_gone`, and the vectors in `testdata/` pass.
 
-## Milestone 2: Android app
+## Milestone 2: Android app — first cut built, testing on devices
 
 Kotlin + Jetpack Compose, libwebrtc via the `io.github.webrtc-sdk:android`
-artifact. Send flow (share sheet or picker → options → link and QR),
-receive flow (App Link or pasted link → file card → `ACTION_CREATE_DOCUMENT`
-→ progress), foreground services for both, settings (rendezvous URL,
-display name, relay-only, defaults), about page. A pure-JVM `core` module
-mirrors `internal/wire` and is unit-tested against `testdata/vectors.json`.
-Permissions: `INTERNET`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`,
-`POST_NOTIFICATIONS`, `ACCESS_NETWORK_STATE`. See `docs/PLAY_STORE.md`.
+artifact, in `android/` (see its README). Send flow (share sheet or picker
+→ options → link and QR), receive flow (App Link or pasted link → file
+card → `ACTION_CREATE_DOCUMENT` → progress → optional unpack for zips),
+dataSync foreground services with wake locks on both sides so transfers
+continue with the app closed, approvals as notification actions, several
+files as one streamed ZIP, settings (rendezvous URL, display name,
+relay-only, defaults), about page. The pure-JVM `core` module mirrors
+`internal/wire` and passes `testdata/vectors.json`. Permissions:
+`INTERNET`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`,
+`POST_NOTIFICATIONS`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK`. See
+`docs/PLAY_STORE.md`.
+
+Remaining before a release: on-device runs phone-to-phone and phone-to-CLI
+(direct and relayed), the Play signing fingerprint in assetlinks, a
+closed test, and store listing assets.
 
 ## Milestone 3: receiving in the browser, no app needed
 

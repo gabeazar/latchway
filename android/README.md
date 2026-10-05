@@ -20,6 +20,15 @@ Needs JDK 17 and the Android SDK (platform 36). From this directory:
 CI (`.github/workflows/android.yml`) does the same on every push and
 attaches the debug APK as an artifact.
 
+## Signing
+
+`debug.keystore` (password `android`, alias `latchway-debug`) is committed
+on purpose: it signs the CI builds, so each APK installs over the last,
+and its SHA-256 fingerprint is in `ASSETLINKS_FINGERPRINTS` so
+`https://latchway.app/s/…` links open sideloaded builds directly. It
+protects nothing. Play builds are signed by Play App Signing; that
+certificate's fingerprint joins the list when it exists.
+
 ## How it is put together
 
 - `peer/Host.kt` and `peer/Receiver.kt` follow `docs/PROTOCOL.md` §4 step

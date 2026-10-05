@@ -18,7 +18,8 @@ android/*.iml
 android/.kotlin/
 *.keystore
 *.jks
-!android/debug.keystore.placeholder
+# The debug signing key is deliberately public: see android/README.md.
+!android/debug.keystore
 
 # OS / editors
 .DS_Store
